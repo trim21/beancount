@@ -102,13 +102,13 @@ class EntryPrinter:
     """
 
     def __init__(
-        self,
-        dcontext=None,
-        render_weight=False,
-        min_width_account=None,
-        prefix=None,
-        stringify_invalid_types=False,
-        write_source=False,
+            self,
+            dcontext=None,
+            render_weight=False,
+            min_width_account=None,
+            prefix=None,
+            stringify_invalid_types=False,
+            write_source=False,
     ):
         self.dcontext = dcontext or display_context.DEFAULT_DISPLAY_CONTEXT
         self.dformat = self.dcontext.build(precision=display_context.Precision.MOST_COMMON)
@@ -214,10 +214,11 @@ class EntryPrinter:
                 strings.append("^{}".format(link))
 
         oss.write(
-            "{e.date} {flag} {}\n".format(
+            "{e.date} {flag} {}".format(
                 " ".join(strings), e=entry, flag=render_flag(entry.flag)
-            )
+            ).strip()
         )
+        oss.write('\n')
         self.write_metadata(entry.meta, oss)
 
         rows = [self.render_posting_strings(posting) for posting in entry.postings]
@@ -238,7 +239,7 @@ class EntryPrinter:
         )
         if non_trivial_balance:
             for posting, account, position, weight in zip(
-                entry.postings, strs_account, strs_position, strs_weight
+                    entry.postings, strs_account, strs_position, strs_weight
             ):
                 oss.write(
                     f"{self.prefix}{account:{width_account}}  "
@@ -250,7 +251,7 @@ class EntryPrinter:
                     self.write_metadata(posting.meta, oss, "    ")
         else:
             for posting, account, position in zip(
-                entry.postings, strs_account, strs_position
+                    entry.postings, strs_account, strs_position
             ):
                 oss.write(
                     f"{self.prefix}{account:{width_account}}  "
@@ -284,8 +285,8 @@ class EntryPrinter:
             position_str = position.to_string(posting, self.dformat)
             # Note: we render weights at maximum precision, for debugging.
             if posting.cost is None or (
-                isinstance(posting.cost, position.Cost)
-                and isinstance(posting.cost.number, Decimal)
+                    isinstance(posting.cost, position.Cost)
+                    and isinstance(posting.cost.number, Decimal)
             ):
                 weight_str = str(convert.get_weight(posting))
         else:
@@ -430,7 +431,7 @@ def render_flag(inflag: Optional[str]) -> str:
 
 
 def format_entry(
-    entry, dcontext=None, render_weights=False, prefix=None, write_source=False
+        entry, dcontext=None, render_weights=False, prefix=None, write_source=False
 ):
     """Format an entry into a string in the same input syntax the parser accepts.
 
@@ -479,7 +480,7 @@ def print_entry(entry, dcontext=None, render_weights=False, file=None, write_sou
 # arguments as the printer object. Isolate the spacer/segmentation algorithm to
 # its own function.
 def print_entries(
-    entries, dcontext=None, render_weights=False, file=None, prefix=None, write_source=False
+        entries, dcontext=None, render_weights=False, file=None, prefix=None, write_source=False
 ):
     """A convenience function that prints a list of entries to a file.
 
@@ -510,9 +511,9 @@ def print_entries(
         # of the same type.
         entry_type = type(entry)
         if (
-            entry_type in (data.Transaction, data.Commodity)
-            or entry_type is not previous_type
-            or write_source
+                entry_type in (data.Transaction, data.Commodity)
+                or entry_type is not previous_type
+                or write_source
         ):
             output.write("\n")
             previous_type = entry_type
