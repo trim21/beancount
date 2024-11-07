@@ -533,7 +533,7 @@ def render_source(meta):
       A string, rendered to be interpretable as a message location for Emacs or
       other editors.
     """
-    return "{}:{:8}".format(meta["filename"], "{}:".format(meta["lineno"]))
+    return "{}:{}:".format(meta["filename"], meta["lineno"])
 
 
 def format_error(error):
