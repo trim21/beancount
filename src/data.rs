@@ -1,11 +1,9 @@
 use crate::decimal::Decimal;
 use chrono::NaiveDate;
-#[allow(unused_imports)]
 use pyo3::prelude::*;
 use pyo3::types::{PyAnyMethods, PyString};
 use pyo3::{pyclass, pymethods, Bound, PyAny, PyResult};
-use std::collections::HashMap;
-use std::fmt::Display;
+use std::collections::{HashMap, HashSet};
 
 pub type Metadata = HashMap<String, String>;
 
@@ -56,6 +54,130 @@ impl Close {
 
 
 #[pyclass]
+#[derive(Debug, Clone)]
+pub struct Commodity {
+    pub meta: Metadata,
+    pub date: NaiveDate,
+    pub currency: Currency,
+}
+
+#[pymethods]
+impl Commodity {
+    fn __repr__(&self) -> String {
+        return format!(
+            "Commodity(meta={:?}, date={}, currency={})",
+            self.meta, self.date, self.currency
+        );
+    }
+}
+
+#[pyclass]
+#[derive(Debug, Clone)]
+pub struct Pad {
+    pub meta: Metadata,
+    pub date: NaiveDate,
+    pub account: String,
+    pub source_account: String,
+}
+
+#[pymethods]
+impl Pad {
+    fn __repr__(&self) -> String {
+        return format!(
+            "Pad(meta={:?}, date={}, account={}, source_account={})",
+            self.meta, self.date, self.account, self.source_account
+        );
+    }
+}
+
+#[pyclass]
+#[derive(Debug, Clone)]
+pub struct Balance {
+    pub meta: Metadata,
+    pub date: NaiveDate,
+    pub account: String,
+    pub amount: Amount,
+    pub tolerance: Option<rust_decimal::Decimal>,
+    pub diff_amount: Option<Amount>,
+}
+
+// #[derive(Debug, Clone)]
+// #[non_exhaustive]
+#[pyclass]
+#[derive(Debug, Clone)]
+pub struct Posting {
+    pub metadata: Metadata,
+    pub account: String,
+    pub units: Option<Amount>,
+    pub cost: Option<PostingCost>,
+    pub price: Option<PostingPrice>,
+    pub flag: Option<char>,
+}
+
+#[derive(Debug, Clone)]
+pub enum PostingCost {
+    Cost(Cost),
+    CostSpec(CostSpec),
+}
+
+#[pyclass]
+#[derive(Debug, Clone)]
+pub struct Cost {
+    pub meta: Metadata, // PyDict
+    pub date: NaiveDate, // PyDate
+    pub currency: Currency,
+    pub label: Option<String>,
+}
+
+#[pyclass]
+#[derive(Debug, Clone)]
+pub struct CostSpec {
+    pub number_per: Option<Decimal>,
+    pub number_total: Option<Decimal>,
+    pub currency: Option<Currency>,
+    pub date: Option<NaiveDate>,
+    pub label: Option<String>,
+    pub merge: Option<bool>,
+}
+
+#[pyclass]
+#[derive(Debug, Clone)]
+pub struct Transaction {
+    pub meta: Metadata,
+    pub date: NaiveDate,
+    pub flag: char,
+    pub payee: Option<String>,
+    pub narration: String,
+    pub tags: HashSet<String>,
+    pub links: HashSet<String>,
+    pub postings: Vec<Posting>,
+}
+
+// #[pymethods]
+// impl Posting {
+//     #[new]
+//     #[pyo3(signature = (flag, account, amount=None, cost=None, price=None, metadata=None))]
+//     fn new(
+//         flag: Option<char>,
+//         account: String,
+//         amount: Option<Amount>,
+//         cost: Option<Cost>,
+//         price: Option<PostingPrice>,
+//         metadata: Option<Metadata>,
+//     ) -> PyResult<Self> {
+//         return Ok(Posting {
+//             flag,
+//             account,
+//             amount,
+//             cost,
+//             price,
+//             metadata: metadata.unwrap_or_else(|| Metadata::new()),
+//         });
+//     }
+// }
+
+
+#[pyclass]
 #[derive(Debug, Clone, PartialEq)]
 pub struct Amount {
     /// The value (decimal) part
@@ -69,9 +191,9 @@ pub struct Amount {
 #[pymethods]
 impl Amount {
     #[new]
-    fn new(value: &Bound<'_, PyAny>, currency: &Bound<'_, PyAny>) -> PyResult<Self> {
+    fn new(value: Decimal, currency: &Bound<'_, PyAny>) -> PyResult<Self> {
         return Ok(Amount {
-            number: Decimal::from_py(value)?,
+            number: value,
             currency: currency.extract()?,
         });
     }
@@ -170,17 +292,6 @@ impl Booking {
     }
 }
 
-#[pyclass]
-#[derive(Debug, Clone)]
-pub struct Cost {
-    #[pyo3(get)]
-    pub meta: Metadata, // PyDict
-    #[pyo3(get)]
-    pub date: NaiveDate, // PyDate
-    #[pyo3(get)]
-    pub currency: Currency,
-    pub label: Option<String>,
-}
 
 #[pymethods]
 impl Cost {
@@ -197,48 +308,6 @@ impl Cost {
             date,
             currency: currency.extract()?,
             label,
-        });
-    }
-}
-
-// #[derive(Debug, Clone)]
-// #[non_exhaustive]
-#[pyclass]
-#[derive(Debug, Clone)]
-pub struct Posting {
-    /// Transaction flag (`*` or `!` or `None` when absent)
-    pub flag: Option<char>,
-    /// Account modified by the posting
-    pub account: String,
-    /// Amount being added to the account
-    pub amount: Option<Amount>,
-    /// Cost (content within `{` and `}`)
-    pub cost: Option<Cost>,
-    /// Price (`@` or `@@`) syntax
-    pub price: Option<PostingPrice>,
-    /// The metadata attached to the posting
-    pub metadata: Metadata,
-}
-
-#[pymethods]
-impl Posting {
-    #[new]
-    #[pyo3(signature = (flag, account, amount=None, cost=None, price=None, metadata=None))]
-    fn new(
-        flag: Option<char>,
-        account: String,
-        amount: Option<Amount>,
-        cost: Option<Cost>,
-        price: Option<PostingPrice>,
-        metadata: Option<Metadata>,
-    ) -> PyResult<Self> {
-        return Ok(Posting {
-            flag,
-            account,
-            amount,
-            cost,
-            price,
-            metadata: metadata.unwrap_or_else(|| Metadata::new()),
         });
     }
 }

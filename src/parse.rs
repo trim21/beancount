@@ -122,6 +122,8 @@ pub struct File {
 pub enum Directive {
     Open(data::Open),
     Close(data::Close),
+    Commodity(data::Commodity),
+    Pad(data::Pad),
     S(String),
 }
 
@@ -130,6 +132,8 @@ impl IntoPy<Py<PyAny>> for Directive {
         return match self {
             Directive::Open(x) => x.into_py(py),
             Directive::Close(x) => x.into_py(py),
+            Directive::Commodity(x) => x.into_py(py),
+            Directive::Pad(x) => x.into_py(py),
             Directive::S(x) => x.into_py(py),
         };
     }
@@ -165,6 +169,37 @@ fn convert(x: beancount_parser::Directive<rust_decimal::Decimal>) -> Result<Dire
                         currencies: v.currencies.iter().map(|x| x.to_string()).collect(),
                         booking: None,
                         // booking: v.booking_method,
+                    }))
+                }
+
+                DirectiveContent::Close(ref v) => {
+                    Ok(Directive::Close(data::Close {
+                        meta: x.metadata.iter().map(|entry| {
+                            (entry.0.to_string(), format!("{:?}", entry.1))
+                        }).collect(),
+                        date,
+                        account: v.account.to_string(),
+                    }))
+                }
+
+                DirectiveContent::Commodity(ref v) => {
+                    Ok(Directive::Commodity(data::Commodity {
+                        meta: x.metadata.iter().map(|entry| {
+                            (entry.0.to_string(), format!("{:?}", entry.1))
+                        }).collect(),
+                        date,
+                        currency: v.to_string(),
+                    }))
+                }
+
+                DirectiveContent::Pad(ref v) => {
+                    Ok(Directive::Pad(data::Pad {
+                        meta: x.metadata.iter().map(|entry| {
+                            (entry.0.to_string(), format!("{:?}", entry.1))
+                        }).collect(),
+                        date,
+                        account: v.account.to_string(),
+                        source_account: v.source_account.to_string(),
                     }))
                 }
 

@@ -16,6 +16,8 @@ option "title" "Ed’s Personal Ledger"
 2014-05-05 txn "Cafe Mogador" "Lamb tagine with wine"
   Liabilities:CreditCard:CapitalOne         -37.45 USD
   Expenses:Restaurant
+
+2014-06-01 pad Assets:BofA:Checking Equity:Opening-Balances
 """
 )
 
