@@ -1,23 +1,59 @@
 use crate::decimal::Decimal;
+use chrono::NaiveDate;
 #[allow(unused_imports)]
 use pyo3::prelude::*;
-use pyo3::types::{PyAnyMethods, PyDate, PyDict, PyString};
-use pyo3::{pyclass, pymethods, Bound, Py, PyAny, PyResult};
+use pyo3::types::{PyAnyMethods, PyString};
+use pyo3::{pyclass, pymethods, Bound, PyAny, PyResult};
 use std::collections::HashMap;
+use std::fmt::Display;
 
 pub type Metadata = HashMap<String, String>;
 
 pub type Currency = String;
 
 #[pyclass]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Open {
     pub meta: Metadata,
-    pub date: Py<PyDate>,
-    pub account: Py<PyString>,
+    pub date: NaiveDate,
+    pub account: String,
     pub currencies: Vec<Currency>,
-    pub booking: Option<Vec<Currency>>,
+    pub booking: Option<Booking>,
 }
+
+#[pymethods]
+impl Open {
+    fn __str__(&self) -> String {
+        return format!(
+            "Open(meta={:?}, date={:?}, account={:?}, currencies={:?}, booking={:?})",
+            self.meta, self.date, self.account, self.currencies, self.booking.as_ref().map(|x| x.__str__())
+        );
+    }
+
+    fn __repr__(&self) -> String {
+        return self.__str__();
+    }
+}
+
+#[pyclass]
+#[derive(Debug, Clone)]
+pub struct Close {
+    pub meta: Metadata,
+    pub date: NaiveDate,
+    pub account: String,
+}
+
+#[pymethods]
+impl Close {
+    fn __str__(&self) -> String {
+        return format!("Close(meta={:?}, date={}, account={})", self.meta, self.date, self.account);
+    }
+
+    fn __repr__(&self) -> String {
+        return self.__str__();
+    }
+}
+
 
 #[pyclass]
 #[derive(Debug, Clone, PartialEq)]
@@ -42,12 +78,12 @@ impl Amount {
 }
 
 #[pyclass]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Price {
     #[pyo3(get)]
-    pub meta: Py<PyDict>, // PyDict
+    pub meta: Metadata, // PyDict
     #[pyo3(get)]
-    pub date: Py<PyDate>, // PyDate
+    pub date: NaiveDate, // PyDate
     #[pyo3(get)]
     pub currency: Currency,
     #[pyo3(get)]
@@ -58,14 +94,14 @@ pub struct Price {
 impl Price {
     #[new]
     fn new(
-        meta: &Bound<'_, PyDict>,
-        date: &Bound<'_, PyDate>,
+        meta: Metadata,
+        date: NaiveDate,
         currency: String,
         amount: Amount,
     ) -> Self {
         Price {
-            meta: meta.clone().unbind(),
-            date: date.clone().unbind(),
+            meta,
+            date,
             currency,
             amount,
         }
@@ -81,8 +117,9 @@ pub enum PostingPrice {
     Total(Amount),
 }
 
-#[pyclass]
-#[derive(PartialEq)]
+#[allow(deprecated)]
+#[pyclass(frozen)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Booking {
     STRICT,
     #[allow(non_camel_case_types)]
@@ -108,17 +145,16 @@ impl Booking {
     }
 
     // to support both `Booking.STRICT == Booking.STRICT` and `Booking.STRICT == "STRICT"`
-    fn __eq__(&self, other: &Bound<'_, PyAny>) -> bool {
-        if let Ok(s) = other.extract::<&str>() {
-            return s == self.__str__();
+    fn __eq__(&self, other: &Bound<'_, PyAny>) -> PyResult<bool> {
+        if let Ok(s) = other.downcast::<PyString>() {
+            return s.to_cow().map(|rhs| self.__str__() == rhs);
         }
 
         if let Ok(b) = other.downcast::<Self>() {
-            let other = &*b.borrow();
-            return self == other;
+            return Ok(self == b.get());
         }
 
-        return false;
+        return Ok(false);
     }
 
     fn __str__(&self) -> &str {
@@ -135,14 +171,15 @@ impl Booking {
 }
 
 #[pyclass]
+#[derive(Debug, Clone)]
 pub struct Cost {
     #[pyo3(get)]
-    pub meta: Py<PyDict>, // PyDict
+    pub meta: Metadata, // PyDict
     #[pyo3(get)]
-    pub date: Py<PyDate>, // PyDate
+    pub date: NaiveDate, // PyDate
     #[pyo3(get)]
     pub currency: Currency,
-    pub label: Option<Py<PyString>>,
+    pub label: Option<String>,
 }
 
 #[pymethods]
@@ -150,10 +187,10 @@ impl Cost {
     #[new]
     #[pyo3(signature = (meta, date, currency, label=None))]
     fn new(
-        meta: Py<PyDict>,
-        date: Py<PyDate>,
+        meta: Metadata,
+        date: NaiveDate,
         currency: &Bound<'_, PyString>,
-        label: Option<Py<PyString>>,
+        label: Option<String>,
     ) -> PyResult<Self> {
         return Ok(Cost {
             meta,
@@ -167,16 +204,16 @@ impl Cost {
 // #[derive(Debug, Clone)]
 // #[non_exhaustive]
 #[pyclass]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Posting {
     /// Transaction flag (`*` or `!` or `None` when absent)
     pub flag: Option<char>,
     /// Account modified by the posting
-    pub account: Py<PyString>,
+    pub account: String,
     /// Amount being added to the account
     pub amount: Option<Amount>,
     /// Cost (content within `{` and `}`)
-    pub cost: Option<Py<Cost>>,
+    pub cost: Option<Cost>,
     /// Price (`@` or `@@`) syntax
     pub price: Option<PostingPrice>,
     /// The metadata attached to the posting
@@ -189,9 +226,9 @@ impl Posting {
     #[pyo3(signature = (flag, account, amount=None, cost=None, price=None, metadata=None))]
     fn new(
         flag: Option<char>,
-        account: Py<PyString>,
+        account: String,
         amount: Option<Amount>,
-        cost: Option<&Bound<'_, Cost>>,
+        cost: Option<Cost>,
         price: Option<PostingPrice>,
         metadata: Option<Metadata>,
     ) -> PyResult<Self> {
@@ -199,7 +236,7 @@ impl Posting {
             flag,
             account,
             amount,
-            cost: cost.map(|c| c.clone().unbind()),
+            cost,
             price,
             metadata: metadata.unwrap_or_else(|| Metadata::new()),
         });

@@ -8,6 +8,8 @@ crate-type = ["cdylib"]
 
 [dependencies]
 beancount-parser = "2.2.1"
-pyo3 = { version = "0.22.6", features = ['extension-module', 'rust_decimal'] }
+chrono = "0.4.38"
+pyo3 = { version = "0.22.6", features = ['abi3-py38', 'extension-module', 'rust_decimal', 'chrono'] }
 rust_decimal = "1.36.0"
 rust_decimal_macros = "1.36.0"
+use = "0.0.1-pre.0"

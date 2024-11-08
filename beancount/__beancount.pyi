@@ -13,6 +13,44 @@ Account = str
 Currency = str
 Meta = Dict[str, Any]
 
+class Open:
+    """
+    An "open account" directive.
+
+    Attributes:
+      meta: See above.
+      date: See above.
+      account: A string, the name of the account that is being opened.
+      currencies: A list of strings, currencies that are allowed in this account.
+        May be None, in which case it means that there are no restrictions on which
+        currencies may be stored in this account.
+      booking: A Booking enum, the booking method to use to disambiguate
+        postings to this account (when zero or more than one postings match the
+        specification), or None if not specified. In practice, this attribute will
+        be should be left unspecified (None) in the vast majority of cases. See
+        Booking below for a selection of valid methods.
+    """
+
+    meta: Meta
+    date: datetime.date
+    account: Account
+    currencies: list[Currency]
+    booking: Optional[Booking]
+
+class Close:
+    """
+    A "close account" directive.
+
+    Attributes:
+      meta: See above.
+      date: See above.
+      account: A string, the name of the account that is being closed.
+    """
+
+    meta: Meta
+    date: datetime.date
+    account: Account
+
 # A set of valid booking method names for positions on accounts.
 # See http://furius.ca/beancount/doc/inventories for a full explanation.
 class Booking:
