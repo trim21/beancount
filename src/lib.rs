@@ -15,11 +15,9 @@ fn __beancount(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<data::Pad>()?;
     m.add_class::<data::Price>()?;
     m.add_class::<data::Amount>()?;
-    m.add_class::<data::PostingPrice>()?;
 
     m.add_class::<data::Cost>()?;
     m.add_class::<data::CostSpec>()?;
-    m.add_class::<data::PostingPrice>()?;
     m.add_class::<data::Posting>()?;
     m.add_class::<data::Transaction>()?;
     m.add_function(wrap_pyfunction!(parse::parse, m)?)?;

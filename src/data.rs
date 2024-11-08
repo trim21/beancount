@@ -116,7 +116,7 @@ pub struct Posting {
     pub account: String,
     pub units: Option<Amount>,
     pub cost: Option<PostingCost>,
-    pub price: Option<PostingPrice>,
+    pub price: Option<Amount>,
     pub flag: Option<char>,
 }
 
@@ -129,8 +129,8 @@ pub enum PostingCost {
 #[pyclass]
 #[derive(Debug, Clone)]
 pub struct Cost {
-    pub meta: Metadata,  // PyDict
-    pub date: NaiveDate, // PyDate
+    pub date: NaiveDate,
+    pub number: Decimal,
     pub currency: Currency,
     pub label: Option<String>,
 }
@@ -157,6 +157,16 @@ pub struct Transaction {
     pub tags: HashSet<String>,
     pub links: HashSet<String>,
     pub postings: Vec<Posting>,
+}
+
+#[pymethods]
+impl Transaction {
+    fn __repr__(&self) -> String {
+        return format!(
+            "Transaction(meta={:?}, date={}, flag={}, payee={:?}, narration={}, tags={:?}, links={:?}, postings={:?})",
+            self.meta, self.date, self.flag, self.payee.clone().unwrap_or("None".to_string()), self.narration, self.tags, self.links, self.postings
+        );
+    }
 }
 
 // #[pymethods]
@@ -191,6 +201,18 @@ pub struct Amount {
     /// Currency
     #[pyo3(get)]
     pub currency: Currency,
+}
+
+// impl Into<Amount> for beancount_parser::Amount<Decimal> {
+//     fn into(&self) -> Amount {
+//         Amount::from(self)
+//     }
+// }
+
+impl From<&beancount_parser::Amount<Decimal>> for Amount {
+    fn from(value: &beancount_parser::Amount<Decimal>) -> Self {
+        Amount { number: value.value, currency: value.currency.to_string() }
+    }
 }
 
 #[pymethods]
@@ -230,14 +252,6 @@ impl Price {
     }
 }
 
-#[pyclass]
-#[derive(Debug, Clone)]
-pub enum PostingPrice {
-    /// Unit cost (`@`)
-    Unit(Amount),
-    /// Total cost (`@@`)
-    Total(Amount),
-}
 
 #[allow(deprecated)]
 #[pyclass(frozen)]
@@ -292,21 +306,30 @@ impl Booking {
     }
 }
 
-#[pymethods]
-impl Cost {
-    #[new]
-    #[pyo3(signature = (meta, date, currency, label=None))]
-    fn new(
-        meta: Metadata,
-        date: NaiveDate,
-        currency: &Bound<'_, PyString>,
-        label: Option<String>,
-    ) -> PyResult<Self> {
-        return Ok(Cost {
-            meta,
-            date,
-            currency: currency.extract()?,
-            label,
-        });
-    }
+// #[pymethods]
+// impl Cost {
+//     #[new]
+//     #[pyo3(signature = (meta, date, currency, label=None))]
+//     fn new(
+//         meta: Metadata,
+//         date: NaiveDate,
+//         currency: &Bound<'_, PyString>,
+//         label: Option<String>,
+//     ) -> PyResult<Self> {
+//         return Ok(Cost {
+//             date,
+//             currency: currency.extract()?,
+//             label,
+//         });
+//     }
+// }
+
+
+#[pyclass]
+#[derive(Debug, Clone)]
+pub struct Event {
+    pub meta: Metadata, // PyDict
+    pub date: NaiveDate, // PyDate
+    pub typ: String,
+    pub description: String,
 }

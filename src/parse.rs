@@ -1,3 +1,4 @@
+use crate::data::Amount;
 use crate::{data, ParserError};
 use beancount_parser::{BeancountFile, DirectiveContent};
 use chrono::NaiveDate;
@@ -122,7 +123,11 @@ pub enum Directive {
     Open(data::Open),
     Close(data::Close),
     Commodity(data::Commodity),
+    Transaction(data::Transaction),
     Pad(data::Pad),
+    Balance(data::Balance),
+    Price(data::Price),
+    Event(data::Event),
     S(String),
 }
 
@@ -133,7 +138,11 @@ impl IntoPy<Py<PyAny>> for Directive {
             Directive::Close(x) => x.into_py(py),
             Directive::Commodity(x) => x.into_py(py),
             Directive::Pad(x) => x.into_py(py),
+            Directive::Balance(x) => x.into_py(py),
             Directive::S(x) => x.into_py(py),
+            Directive::Transaction(x) => x.into_py(py),
+            Directive::Price(x) => x.into_py(py),
+            Directive::Event(x) => x.into_py(py),
         };
     }
 }
@@ -205,7 +214,70 @@ fn convert(x: beancount_parser::Directive<rust_decimal::Decimal>) -> Result<Dire
                     source_account: v.source_account.to_string(),
                 })),
 
-                _ => Ok(Directive::S(format!("{:?}", x))),
+                DirectiveContent::Price(ref v) => Ok(Directive::Price(data::Price {
+                    meta: x
+                        .metadata
+                        .iter()
+                        .map(|entry| (entry.0.to_string(), format!("{:?}", entry.1)))
+                        .collect(),
+                    date,
+                    currency: v.currency.to_string(),
+                    amount: Amount { number: v.amount.value, currency: v.amount.currency.to_string() },
+                })),
+
+                DirectiveContent::Balance(ref v) => Ok(Directive::Balance(data::Balance {
+                    meta: x
+                        .metadata
+                        .iter()
+                        .map(|entry| (entry.0.to_string(), format!("{:?}", entry.1)))
+                        .collect(),
+                    date,
+                    tolerance: v.tolerance.map(|x| x.into()),
+                    diff_amount: None,
+                    account: v.account.to_string(),
+                    amount: Amount::from(&v.amount),
+                })),
+                DirectiveContent::Event(ref v) => Ok(Directive::Event(data::Event {
+                    meta: x
+                        .metadata
+                        .iter()
+                        .map(|entry| (entry.0.to_string(), format!("{:?}", entry.1)))
+                        .collect(),
+                    date,
+                    typ: v.name.clone(),
+                    description: v.value.clone(),
+                })),
+                DirectiveContent::Transaction(ref v) => Ok(Directive::Transaction(data::Transaction {
+                    meta: x
+                        .metadata
+                        .iter()
+                        .map(|entry| (entry.0.to_string(), format!("{:?}", entry.1)))
+                        .collect(),
+                    date,
+                    flag: v.flag.unwrap_or('*'),
+                    payee: v.payee.clone(),
+                    narration: v.narration.clone().unwrap_or("".to_string()),
+                    tags: v.tags.iter().map(|x| x.to_string()).collect(),
+                    links: v.links.iter().map(|x| x.to_string()).collect(),
+                    postings: v
+                        .postings
+                        .iter()
+                        .map(|x| data::Posting {
+                            metadata: x
+                                .metadata
+                                .iter()
+                                .map(|entry| (entry.0.to_string(), format!("{:?}", entry.1)))
+                                .collect(),
+                            account: x.account.to_string(),
+                            units: None,
+                            cost: None,
+                            price: None,
+                            flag: x.flag,
+                        })
+                        .collect(),
+                })),
+
+                _ => Ok(Directive::S("Unspported".to_string())),
             }
 
             // Ok(Directive::Open(data::Open {

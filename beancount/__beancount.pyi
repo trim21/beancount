@@ -275,3 +275,39 @@ class Transaction:
     tags: FrozenSet
     links: FrozenSet
     postings: list[Posting]
+
+class Event:
+    """
+    An "event value change" directive. These directives are used as string
+    variables that have different values over time. You can use these to track an
+    address, your location, your current employer, anything you like. The kind of
+    reporting that is made of these generic events is based on days and a
+    timeline. For instance, if you need to track the number of days you spend in
+    each country or state, create a "location" event and whenever you travel, add
+    an event directive to indicate its new value. You should be able to write
+    simple scripts against those in order to compute if you were present somewhere
+    for a particular number of days. Here's an illustrative example usage, in
+    order to maintain your health insurance coverage in Canada, you need to be
+    present in the country for 183 days or more, excluding trips of less than 30
+    days. There is a similar test to be done in the US by aliens to figure out if
+    they need to be considered as residents for tax purposes (the so-called
+    "substantial presence test"). By integrating these directives into your
+    bookkeeping, you can easily have a little program that computes the tests for
+    you. This is, of course, entirely optional and somewhat auxiliary to the main
+    purpose of double-entry bookkeeping, but correlates strongly with the
+    transactions you insert in it, and so it's a really convenient thing to have
+    in the same input file.
+
+    Attributes:
+      meta: See above.
+      date: See above.
+      "type": A short string, typically a single lowercase word, that defines a
+        unique variable whose value changes over time. For example, 'location'.
+      description: A free-form string, the value of the variable as of the date
+        of the transaction.
+    """
+
+    meta: Meta
+    date: datetime.date
+    type: str
+    description: str
