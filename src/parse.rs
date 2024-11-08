@@ -103,7 +103,6 @@ impl Opt {
     }
 }
 
-
 #[pyclass]
 pub struct File {
     #[pyo3(get)]
@@ -154,16 +153,19 @@ impl IntoPy<Py<PyAny>> for Directive {
 fn convert(x: beancount_parser::Directive<rust_decimal::Decimal>) -> Result<Directive, PyErr> {
     let date = NaiveDate::from_ymd_opt(x.date.year as i32, x.date.month as u32, x.date.day as u32);
     return match date {
-        None => {
-            Err(ParserError::new_err(format!("Invalid date {:#?} at lino {}", x.date, x.line_number)))
-        }
+        None => Err(ParserError::new_err(format!(
+            "Invalid date {:#?} at lino {}",
+            x.date, x.line_number
+        ))),
         Some(date) => {
             match x.content {
                 DirectiveContent::Open(ref v) => {
                     Ok(Directive::Open(data::Open {
-                        meta: x.metadata.iter().map(|entry| {
-                            (entry.0.to_string(), format!("{:?}", entry.1))
-                        }).collect(),
+                        meta: x
+                            .metadata
+                            .iter()
+                            .map(|entry| (entry.0.to_string(), format!("{:?}", entry.1)))
+                            .collect(),
                         date,
                         account: v.account.to_string(),
                         currencies: v.currencies.iter().map(|x| x.to_string()).collect(),
@@ -172,40 +174,38 @@ fn convert(x: beancount_parser::Directive<rust_decimal::Decimal>) -> Result<Dire
                     }))
                 }
 
-                DirectiveContent::Close(ref v) => {
-                    Ok(Directive::Close(data::Close {
-                        meta: x.metadata.iter().map(|entry| {
-                            (entry.0.to_string(), format!("{:?}", entry.1))
-                        }).collect(),
-                        date,
-                        account: v.account.to_string(),
-                    }))
-                }
+                DirectiveContent::Close(ref v) => Ok(Directive::Close(data::Close {
+                    meta: x
+                        .metadata
+                        .iter()
+                        .map(|entry| (entry.0.to_string(), format!("{:?}", entry.1)))
+                        .collect(),
+                    date,
+                    account: v.account.to_string(),
+                })),
 
-                DirectiveContent::Commodity(ref v) => {
-                    Ok(Directive::Commodity(data::Commodity {
-                        meta: x.metadata.iter().map(|entry| {
-                            (entry.0.to_string(), format!("{:?}", entry.1))
-                        }).collect(),
-                        date,
-                        currency: v.to_string(),
-                    }))
-                }
+                DirectiveContent::Commodity(ref v) => Ok(Directive::Commodity(data::Commodity {
+                    meta: x
+                        .metadata
+                        .iter()
+                        .map(|entry| (entry.0.to_string(), format!("{:?}", entry.1)))
+                        .collect(),
+                    date,
+                    currency: v.to_string(),
+                })),
 
-                DirectiveContent::Pad(ref v) => {
-                    Ok(Directive::Pad(data::Pad {
-                        meta: x.metadata.iter().map(|entry| {
-                            (entry.0.to_string(), format!("{:?}", entry.1))
-                        }).collect(),
-                        date,
-                        account: v.account.to_string(),
-                        source_account: v.source_account.to_string(),
-                    }))
-                }
+                DirectiveContent::Pad(ref v) => Ok(Directive::Pad(data::Pad {
+                    meta: x
+                        .metadata
+                        .iter()
+                        .map(|entry| (entry.0.to_string(), format!("{:?}", entry.1)))
+                        .collect(),
+                    date,
+                    account: v.account.to_string(),
+                    source_account: v.source_account.to_string(),
+                })),
 
-                _ => {
-                    Ok(Directive::S(format!("{:?}", x)))
-                }
+                _ => Ok(Directive::S(format!("{:?}", x))),
             }
 
             // Ok(Directive::Open(data::Open {
@@ -255,12 +255,8 @@ pub fn parse(content: &str) -> PyResult<File> {
 
             for x in bean.directives {
                 match convert(x) {
-                    Ok(x) => {
-                        directives.push(x)
-                    }
-                    Err(err) => {
-                        errors.push(err)
-                    }
+                    Ok(x) => directives.push(x),
+                    Err(err) => errors.push(err),
                 }
             }
 
@@ -273,11 +269,9 @@ pub fn parse(content: &str) -> PyResult<File> {
                 options: bean
                     .options
                     .iter()
-                    .map(|x| {
-                        Opt {
-                            name: x.name.to_string(),
-                            value: x.value.to_string(),
-                        }
+                    .map(|x| Opt {
+                        name: x.name.to_string(),
+                        value: x.value.to_string(),
                     })
                     .collect(),
                 directives,

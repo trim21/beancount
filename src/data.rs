@@ -24,7 +24,11 @@ impl Open {
     fn __str__(&self) -> String {
         return format!(
             "Open(meta={:?}, date={:?}, account={:?}, currencies={:?}, booking={:?})",
-            self.meta, self.date, self.account, self.currencies, self.booking.as_ref().map(|x| x.__str__())
+            self.meta,
+            self.date,
+            self.account,
+            self.currencies,
+            self.booking.as_ref().map(|x| x.__str__())
         );
     }
 
@@ -44,14 +48,16 @@ pub struct Close {
 #[pymethods]
 impl Close {
     fn __str__(&self) -> String {
-        return format!("Close(meta={:?}, date={}, account={})", self.meta, self.date, self.account);
+        return format!(
+            "Close(meta={:?}, date={}, account={})",
+            self.meta, self.date, self.account
+        );
     }
 
     fn __repr__(&self) -> String {
         return self.__str__();
     }
 }
-
 
 #[pyclass]
 #[derive(Debug, Clone)]
@@ -123,7 +129,7 @@ pub enum PostingCost {
 #[pyclass]
 #[derive(Debug, Clone)]
 pub struct Cost {
-    pub meta: Metadata, // PyDict
+    pub meta: Metadata,  // PyDict
     pub date: NaiveDate, // PyDate
     pub currency: Currency,
     pub label: Option<String>,
@@ -176,7 +182,6 @@ pub struct Transaction {
 //     }
 // }
 
-
 #[pyclass]
 #[derive(Debug, Clone, PartialEq)]
 pub struct Amount {
@@ -215,12 +220,7 @@ pub struct Price {
 #[pymethods]
 impl Price {
     #[new]
-    fn new(
-        meta: Metadata,
-        date: NaiveDate,
-        currency: String,
-        amount: Amount,
-    ) -> Self {
+    fn new(meta: Metadata, date: NaiveDate, currency: String, amount: Amount) -> Self {
         Price {
             meta,
             date,
@@ -291,7 +291,6 @@ impl Booking {
         }
     }
 }
-
 
 #[pymethods]
 impl Cost {
