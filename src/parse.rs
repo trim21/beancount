@@ -159,149 +159,137 @@ impl IntoPy<Py<PyAny>> for Directive {
 //         );
 //     }
 // }
+
+fn convert_date(x: &beancount_parser::Date) -> Result<NaiveDate, PyErr> {
+    match NaiveDate::from_ymd_opt(x.year as i32, x.month as u32, x.day as u32) {
+        None => Err(ParserError::new_err(format!("Invalid date {:#?}", x))),
+        Some(date) => Ok(date),
+    }
+}
 fn convert(x: beancount_parser::Directive<rust_decimal::Decimal>) -> Result<Directive, PyErr> {
-    let date = NaiveDate::from_ymd_opt(x.date.year as i32, x.date.month as u32, x.date.day as u32);
-    return match date {
-        None => Err(ParserError::new_err(format!(
-            "Invalid date {:#?} at lino {}",
-            x.date, x.line_number
-        ))),
-        Some(date) => {
-            match x.content {
-                DirectiveContent::Open(ref v) => {
-                    Ok(Directive::Open(data::Open {
-                        meta: x
-                            .metadata
-                            .iter()
-                            .map(|entry| (entry.0.to_string(), format!("{:?}", entry.1)))
-                            .collect(),
-                        date,
-                        account: v.account.to_string(),
-                        currencies: v.currencies.iter().map(|x| x.to_string()).collect(),
-                        booking: None,
-                        // booking: v.booking_method,
-                    }))
-                }
-
-                DirectiveContent::Close(ref v) => Ok(Directive::Close(data::Close {
-                    meta: x
-                        .metadata
-                        .iter()
-                        .map(|entry| (entry.0.to_string(), format!("{:?}", entry.1)))
-                        .collect(),
-                    date,
-                    account: v.account.to_string(),
-                })),
-
-                DirectiveContent::Commodity(ref v) => Ok(Directive::Commodity(data::Commodity {
-                    meta: x
-                        .metadata
-                        .iter()
-                        .map(|entry| (entry.0.to_string(), format!("{:?}", entry.1)))
-                        .collect(),
-                    date,
-                    currency: v.to_string(),
-                })),
-
-                DirectiveContent::Pad(ref v) => Ok(Directive::Pad(data::Pad {
-                    meta: x
-                        .metadata
-                        .iter()
-                        .map(|entry| (entry.0.to_string(), format!("{:?}", entry.1)))
-                        .collect(),
-                    date,
-                    account: v.account.to_string(),
-                    source_account: v.source_account.to_string(),
-                })),
-
-                DirectiveContent::Price(ref v) => Ok(Directive::Price(data::Price {
-                    meta: x
-                        .metadata
-                        .iter()
-                        .map(|entry| (entry.0.to_string(), format!("{:?}", entry.1)))
-                        .collect(),
-                    date,
-                    currency: v.currency.to_string(),
-                    amount: Amount {
-                        number: v.amount.value,
-                        currency: v.amount.currency.to_string(),
-                    },
-                })),
-
-                DirectiveContent::Balance(ref v) => Ok(Directive::Balance(data::Balance {
-                    meta: x
-                        .metadata
-                        .iter()
-                        .map(|entry| (entry.0.to_string(), format!("{:?}", entry.1)))
-                        .collect(),
-                    date,
-                    tolerance: v.tolerance.map(|x| x.into()),
-                    diff_amount: None,
-                    account: v.account.to_string(),
-                    amount: Amount::from(&v.amount),
-                })),
-                DirectiveContent::Event(ref v) => Ok(Directive::Event(data::Event {
-                    meta: x
-                        .metadata
-                        .iter()
-                        .map(|entry| (entry.0.to_string(), format!("{:?}", entry.1)))
-                        .collect(),
-                    date,
-                    typ: v.name.clone(),
-                    description: v.value.clone(),
-                })),
-                DirectiveContent::Transaction(ref v) => {
-                    Ok(Directive::Transaction(data::Transaction {
-                        meta: x
-                            .metadata
-                            .iter()
-                            .map(|entry| (entry.0.to_string(), format!("{:?}", entry.1)))
-                            .collect(),
-                        date,
-                        flag: v.flag.unwrap_or('*'),
-                        payee: v.payee.clone(),
-                        narration: v.narration.clone().unwrap_or("".to_string()),
-                        tags: v.tags.iter().map(|x| x.to_string()).collect(),
-                        links: v.links.iter().map(|x| x.to_string()).collect(),
-                        postings: v
-                            .postings
-                            .iter()
-                            .map(|x| data::Posting {
-                                metadata: x
-                                    .metadata
-                                    .iter()
-                                    .map(|entry| (entry.0.to_string(), format!("{:?}", entry.1)))
-                                    .collect(),
-                                account: x.account.to_string(),
-                                units: None,
-                                cost: None,
-                                price: None,
-                                flag: x.flag,
-                            })
-                            .collect(),
-                    }))
-                }
-
-                _ => Ok(Directive::S("Unspported".to_string())),
-            }
-
-            // Ok(Directive::Open(data::Open {
-            //     meta: Metadata::new(),
-            //     date,
-            //     account: format!("{:#?}", x),
-            //     booking: Some(Booking::FIFO),
-            //     currencies: vec!["CNY".to_string()],
-            // account: x.account.to_string(),
-            // currencies: x.currencies.iter().map(|x| x.to_string()).collect(),
-            // booking: x.booking.map(|x| x.to_string()),
-            // }))
-            // Directive {
-            //     date,
-            //     line_number: x.line_number,
-            // content: convert(x),
-            // }
+    let date = convert_date(&x.date)?;
+    return match x.content {
+        DirectiveContent::Open(ref v) => {
+            Ok(Directive::Open(data::Open {
+                meta: x
+                    .metadata
+                    .iter()
+                    .map(|entry| (entry.0.to_string(), format!("{:?}", entry.1)))
+                    .collect(),
+                date,
+                account: v.account.to_string(),
+                currencies: v.currencies.iter().map(|x| x.to_string()).collect(),
+                booking: None,
+                // booking: v.booking_method,
+            }))
         }
+
+        DirectiveContent::Close(ref v) => Ok(Directive::Close(data::Close {
+            meta: x
+                .metadata
+                .iter()
+                .map(|entry| (entry.0.to_string(), format!("{:?}", entry.1)))
+                .collect(),
+            date,
+            account: v.account.to_string(),
+        })),
+
+        DirectiveContent::Commodity(ref v) => Ok(Directive::Commodity(data::Commodity {
+            meta: x
+                .metadata
+                .iter()
+                .map(|entry| (entry.0.to_string(), format!("{:?}", entry.1)))
+                .collect(),
+            date,
+            currency: v.to_string(),
+        })),
+
+        DirectiveContent::Pad(ref v) => Ok(Directive::Pad(data::Pad {
+            meta: x
+                .metadata
+                .iter()
+                .map(|entry| (entry.0.to_string(), format!("{:?}", entry.1)))
+                .collect(),
+            date,
+            account: v.account.to_string(),
+            source_account: v.source_account.to_string(),
+        })),
+
+        DirectiveContent::Price(ref v) => Ok(Directive::Price(data::Price {
+            meta: x
+                .metadata
+                .iter()
+                .map(|entry| (entry.0.to_string(), format!("{:?}", entry.1)))
+                .collect(),
+            date,
+            currency: v.currency.to_string(),
+            amount: Amount {
+                number: v.amount.value,
+                currency: v.amount.currency.to_string(),
+            },
+        })),
+
+        DirectiveContent::Balance(ref v) => Ok(Directive::Balance(data::Balance {
+            meta: x
+                .metadata
+                .iter()
+                .map(|entry| (entry.0.to_string(), format!("{:?}", entry.1)))
+                .collect(),
+            date,
+            tolerance: v.tolerance.map(|x| x.into()),
+            diff_amount: None,
+            account: v.account.to_string(),
+            amount: Amount::from(&v.amount),
+        })),
+        DirectiveContent::Event(ref v) => Ok(Directive::Event(data::Event {
+            meta: x
+                .metadata
+                .iter()
+                .map(|entry| (entry.0.to_string(), format!("{:?}", entry.1)))
+                .collect(),
+            date,
+            typ: v.name.clone(),
+            description: v.value.clone(),
+        })),
+        DirectiveContent::Transaction(ref v) => {
+            Ok(Directive::Transaction(data::Transaction {
+                meta: x
+                    .metadata
+                    .iter()
+                    .map(|entry| (entry.0.to_string(), format!("{:?}", entry.1)))
+                    .collect(),
+                date,
+                flag: v.flag.unwrap_or('*'),
+                payee: v.payee.clone(),
+                narration: v.narration.clone().unwrap_or("".to_string()),
+                tags: v.tags.iter().map(|x| x.to_string()).collect(),
+                links: v.links.iter().map(|x| x.to_string()).collect(),
+                postings: v
+                    .postings
+                    .iter()
+                    .map(|x| x.try_into())
+                    .collect::<Result<Vec<_>, PyErr>>()?,
+            }))
+        }
+
+        _ => Ok(Directive::S("Unspported".to_string())),
     };
+
+    // Ok(Directive::Open(data::Open {
+    //     meta: Metadata::new(),
+    //     date,
+    //     account: format!("{:#?}", x),
+    //     booking: Some(Booking::FIFO),
+    //     currencies: vec!["CNY".to_string()],
+    // account: x.account.to_string(),
+    // currencies: x.currencies.iter().map(|x| x.to_string()).collect(),
+    // booking: x.booking.map(|x| x.to_string()),
+    // }))
+    // Directive {
+    //     date,
+    //     line_number: x.line_number,
+    // content: convert(x),
+    // }
     // return match x.content {
     //     beancount_parser::DirectiveContent::Open(ref v) => {
     //         Directive::Open(data::Open {

@@ -1,4 +1,5 @@
 use crate::decimal::Decimal;
+use crate::ParserError;
 use chrono::NaiveDate;
 use pyo3::prelude::*;
 use pyo3::types::{PyAnyMethods, PyString};
@@ -119,6 +120,55 @@ pub struct Posting {
     pub price: Option<Amount>,
     pub flag: Option<char>,
 }
+fn convert_date(x: &beancount_parser::Date) -> Result<NaiveDate, PyErr> {
+    match NaiveDate::from_ymd_opt(x.year as i32, x.month as u32, x.day as u32) {
+        None => Err(ParserError::new_err(format!("Invalid date {:#?}", x))),
+        Some(date) => Ok(date),
+    }
+}
+impl TryInto<Posting> for beancount_parser::Posting<Decimal> {
+    type Error = PyErr;
+
+
+    fn try_into(self) -> Result<Posting, Self::Error> {
+        return Posting::try_from(&self);
+    }
+}
+
+impl TryFrom<&beancount_parser::Posting<Decimal>> for Posting {
+    type Error = PyErr;
+
+    fn try_from(value: &beancount_parser::Posting<Decimal>) -> Result<Self, Self::Error> {
+        let cost = match &value.cost {
+            None => None,
+            Some(c) => {
+                Some(PostingCost::Cost(Cost {
+                    date: convert_date(&c.date.unwrap())?,
+                    number: c.amount.clone().unwrap().value,
+                    currency: c.amount.clone().unwrap().currency.to_string(),
+                    label: None,
+                }))
+            }
+        };
+
+        let price = value.price.clone();
+
+        return Ok(Posting {
+            metadata: value
+                .metadata
+                .iter()
+                .map(|entry| {
+                    (entry.0.to_string(), format!("{:?}", entry.1))
+                })
+                .collect(),
+            account: value.account.to_string(),
+            units: None,
+            cost,
+            price: None,
+            flag: value.flag,
+        });
+    }
+}
 
 #[derive(Debug, Clone)]
 pub enum PostingCost {
@@ -163,7 +213,7 @@ pub struct Transaction {
 impl Transaction {
     fn __repr__(&self) -> String {
         return format!(
-            "Transaction(meta={:?}, date={}, flag={}, payee={:?}, narration={}, tags={:?}, links={:?}, postings={:?})",
+            "Transaction(meta={:?}, date={:?}, flag={:?}, payee={:?}, narration={:?}, tags={:?}, links={:?}, postings={:?})",
             self.meta,
             self.date,
             self.flag,
