@@ -164,7 +164,14 @@ impl Transaction {
     fn __repr__(&self) -> String {
         return format!(
             "Transaction(meta={:?}, date={}, flag={}, payee={:?}, narration={}, tags={:?}, links={:?}, postings={:?})",
-            self.meta, self.date, self.flag, self.payee.clone().unwrap_or("None".to_string()), self.narration, self.tags, self.links, self.postings
+            self.meta,
+            self.date,
+            self.flag,
+            self.payee.clone().unwrap_or("None".to_string()),
+            self.narration,
+            self.tags,
+            self.links,
+            self.postings
         );
     }
 }
@@ -211,7 +218,10 @@ pub struct Amount {
 
 impl From<&beancount_parser::Amount<Decimal>> for Amount {
     fn from(value: &beancount_parser::Amount<Decimal>) -> Self {
-        Amount { number: value.value, currency: value.currency.to_string() }
+        Amount {
+            number: value.value,
+            currency: value.currency.to_string(),
+        }
     }
 }
 
@@ -251,7 +261,6 @@ impl Price {
         }
     }
 }
-
 
 #[allow(deprecated)]
 #[pyclass(frozen)]
@@ -324,11 +333,10 @@ impl Booking {
 //     }
 // }
 
-
 #[pyclass]
 #[derive(Debug, Clone)]
 pub struct Event {
-    pub meta: Metadata, // PyDict
+    pub meta: Metadata,  // PyDict
     pub date: NaiveDate, // PyDate
     pub typ: String,
     pub description: String,
