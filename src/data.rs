@@ -126,14 +126,7 @@ fn convert_date(x: &beancount_parser::Date) -> Result<NaiveDate, PyErr> {
         Some(date) => Ok(date),
     }
 }
-impl TryInto<Posting> for beancount_parser::Posting<Decimal> {
-    type Error = PyErr;
 
-
-    fn try_into(self) -> Result<Posting, Self::Error> {
-        return Posting::try_from(&self);
-    }
-}
 
 impl TryFrom<&beancount_parser::Posting<Decimal>> for Posting {
     type Error = PyErr;
@@ -150,8 +143,6 @@ impl TryFrom<&beancount_parser::Posting<Decimal>> for Posting {
                 }))
             }
         };
-
-        let price = value.price.clone();
 
         return Ok(Posting {
             metadata: value
