@@ -33,9 +33,9 @@ option "title" "Ed’s Personal Ledger"
 # print(file.options)  # [Option(name="title", value="Ed’s Personal Ledger"]
 # # print(file.directives)  # [Option(name="title", value="Ed’s Personal Ledger"]
 #
-# for d in file.directives:
-#     print(d)
-#     print("---")
+for d in file.directives:
+    print(d)
+    print("---")
 #
 # # d0: Open = file.directives[0]
 #

@@ -51,6 +51,7 @@ pub enum Directive {
     Balance(data::Balance),
     Price(data::Price),
     Event(data::Event),
+    Option(Opt),
     S(String),
 }
 
@@ -66,6 +67,7 @@ impl IntoPy<Py<PyAny>> for Directive {
             Directive::Transaction(x) => x.into_py(py),
             Directive::Price(x) => x.into_py(py),
             Directive::Event(x) => x.into_py(py),
+            Directive::Option(x) => x.into_py(py),
         };
     }
 }

@@ -1,7 +1,9 @@
 use pyo3::create_exception;
 use pyo3::prelude::*;
+use std::prelude::*;
 
 mod data;
+mod error;
 mod decimal;
 mod parse;
 mod parser;
@@ -22,7 +24,7 @@ fn __beancount(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<data::Posting>()?;
     m.add_class::<data::Transaction>()?;
     m.add_function(wrap_pyfunction!(parse::parse, m)?)?;
-    m.add_function(wrap_pyfunction!(parse::parse2, m)?)?;
+    m.add_function(wrap_pyfunction!(parser::py_parse2, m)?)?;
 
     // parser::register_child_module(m)
     return Ok(());
