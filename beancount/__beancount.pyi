@@ -1,6 +1,6 @@
 import datetime
 from decimal import Decimal
-from typing import Optional, Dict, Any, FrozenSet
+from typing import Optional, Dict, Any, FrozenSet, Set
 
 class File:
     includes: list[str]
@@ -13,6 +13,83 @@ Flag = str
 Account = str
 Currency = str
 Meta = Dict[str, Any]
+
+class Custom:
+    """
+    A custom directive. This directive can be used to implement new experimental
+    dated features in the Beancount file. This is meant as an intermediate measure
+    to be used when you would need to implement a new directive in a plugin. These
+    directives will be parsed liberally... any list of tokens are supported. All
+    that is required is some unique name for them that acts as a "type". These
+    directives are included in the stream and a plugin should be able to gather
+    them.
+
+    Attributes:
+      meta: See above.
+      type: A string that represents the type of the directive.
+      values: A list of values of various simple types supported by the grammar.
+        (Note that this list is not enforced to be consistent for all directives
+        of the same type by the parser.)
+    """
+
+    meta: Meta
+    date: datetime.date
+    type: str
+    values: list[str]
+
+class Document:
+    """
+    A document file declaration directive. This directive is used to attach a
+    statement to an account, at a particular date. A typical usage would be to
+    render PDF files or scans of your bank statements into the account's journal.
+    While you can explicitly create those directives in the input syntax, it is
+    much more convenient to provide Beancount with a root directory to search for
+    filenames in a hierarchy mirroring the chart of accounts, filenames which
+    should match the following dated format: "YYYY-MM-DD.*". See options for
+    detail. Beancount will automatically create these documents directives based
+    on the file hierarchy, and you can get them by parsing the list of entries.
+
+    Attributes:
+      meta: See above.
+      date: See above.
+      account: A string, the account which the statement or document is associated
+        with.
+      filename: The absolute filename of the document file.
+      tags: A set of tag strings (without the '#'), or None, if an empty set.
+      links: A set of link strings (without the '^'), or None, if an empty set.
+    """
+
+    meta: Meta
+    date: datetime.date
+    account: Account
+    filename: str
+    tags: Optional[Set]
+    links: Optional[Set]
+
+class Note:
+    """
+    A note directive, a general note that is attached to an account. These are
+    used to attach text at a particular date in a specific account. The notes can
+    be anything; a typical use would be to jot down an answer from a phone call to
+    the institution represented by the account. It should show up in an account's
+    journal. If you don't want this rendered, use the comment syntax in the input
+    file, which does not get parsed and stored.
+
+    Attributes:
+      meta: See above.
+      date: See above.
+      account: A string, the account which the note is to be attached to. This is
+        never None, notes always have an account they correspond to.
+      comment: A free-form string, the text of the note. This can be long if you
+        want it to.
+    """
+
+    meta: Meta
+    date: datetime.date
+    account: Account
+    comment: str
+    tags: Optional[Set]
+    links: Optional[Set]
 
 class Open:
     """

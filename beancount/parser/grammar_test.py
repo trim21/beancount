@@ -227,7 +227,7 @@ class TestParserEntryTypes(unittest.TestCase):
                 ("weekly < 1000.00 USD", str),
                 (datetime.date(2016, 2, 28), datetime.date),
                 (True, bool),
-                (amount.from_string("43.03 USD"), amount.Amount),
+                (A("43.03 USD"), amount.Amount),
                 (D("23"), Decimal),
             ],
             txns[0].values,
@@ -286,7 +286,7 @@ class TestUglyBugs(unittest.TestCase):
 
     @parser.parse_doc()
     def test_empty_1(self, entries, errors, _):
-        ""
+        """"""
         check_list(self, entries, [])
         check_list(self, errors, [])
 
@@ -1332,7 +1332,7 @@ class TestTotalsAndSigns(unittest.TestCase):
           Assets:Investments:Cash  -2000.00 USD
         """
         posting = entries[0].postings[0]
-        self.assertEqual(amount.from_string("200 USD"), posting.price)
+        self.assertEqual(A("200 USD"), posting.price)
         self.assertEqual(None, posting.cost)
 
     @parser.parse_doc()
@@ -1343,7 +1343,7 @@ class TestTotalsAndSigns(unittest.TestCase):
           Assets:Investments:Cash  20000.00 USD
         """
         posting = entries[0].postings[0]
-        self.assertEqual(amount.from_string("200 USD"), posting.price)
+        self.assertEqual(A("200 USD"), posting.price)
         self.assertEqual(None, posting.cost)
 
     @parser.parse_doc(expect_errors=True)
@@ -1374,7 +1374,7 @@ class TestBalance(unittest.TestCase):
           Assets:Investments:Cash  -20000 USD
         """
         posting = entries[0].postings[0]
-        self.assertEqual(amount.from_string("200 USD"), posting.price)
+        self.assertEqual(A("200 USD"), posting.price)
         self.assertEqual(None, posting.cost)
 
     @parser.parse_doc()
@@ -1842,7 +1842,8 @@ class TestLexerAndParserErrors(cmptest.TestCase):
 
     def test_lexer_errors_in_postings(self):
         txn_strings = (
-            textwrap.dedent("""
+            textwrap.dedent(
+                """
 
           2000-01-02 *
             Assets:Working  `
@@ -1874,15 +1875,18 @@ class TestLexerAndParserErrors(cmptest.TestCase):
             Assets:Working  22.22 USD
             Assets:Working  )
 
-        """)
+        """
+            )
             .strip()
             .split("\n\n")
         )
         self.assertEqual(6, len(txn_strings))
         for txn_string in txn_strings:
-            input_string = txn_string + textwrap.dedent("""
+            input_string = txn_string + textwrap.dedent(
+                """
               2000-01-02 open Assets:Working
-            """)
+            """
+            )
             entries, errors, _ = parser.parse_string(input_string)
 
             # Check that the transaction is not produced.

@@ -1,0 +1,5 @@
+
+2022-11-17 * "Buy shares of STK2"
+  Assets:CC:Investment:Cash                  -991.65 CCY
+  Assets:CC:Investment:STK2               31 STK2 {31.70 CCY}
+  Expenses:Financial:Commissions  8.95 CCY

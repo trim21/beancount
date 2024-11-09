@@ -1,5 +1,8 @@
+use crate::parser::{MyParser, Rule};
 use crate::ParserError;
 use chrono::NaiveDate;
+use lazy_static::lazy_static;
+use pest::Parser;
 use pyo3::prelude::*;
 use pyo3::types::{PyAnyMethods, PyString};
 use pyo3::{pyclass, pymethods, Bound, PyAny, PyResult};
@@ -230,6 +233,10 @@ pub struct Transaction {
 
 #[pymethods]
 impl Transaction {
+    fn __rich__(&self) -> String {
+        return format!("{:#?}", self);
+    }
+
     fn __repr__(&self) -> String {
         return format!(
             "Transaction(meta={:?}, date={:?}, flag={:?}, payee={:?}, narration={:?}, tags={:?}, links={:?}, postings={:?})",
@@ -283,11 +290,15 @@ pub struct Amount {
 impl Amount {
     #[new]
     #[pyo3(signature=(number, currency))]
-    fn new(number: Option<Decimal>, currency: &Bound<'_, PyAny>) -> PyResult<Self> {
-        return Ok(Amount {
-            number,
-            currency: currency.extract()?,
-        });
+    fn new(number: Option<Decimal>, currency: String) -> PyResult<Self> {
+        return Ok(Amount { number, currency });
+    }
+
+    fn __neg__(&self) -> Self {
+        return Self {
+            number: self.number.clone().map(|n| -n),
+            currency: self.currency.clone(),
+        };
     }
 }
 
@@ -532,4 +543,26 @@ pub struct Query {
     pub name: String,
     #[pyo3(get)]
     pub query_string: String,
+}
+
+#[pyclass(frozen)]
+#[derive(Debug, Clone)]
+pub struct Opt {
+    #[pyo3(get)]
+    pub meta: Metadata,
+    #[pyo3(get)]
+    pub name: String,
+    #[pyo3(get)]
+    pub value: String,
+}
+
+#[pymethods]
+impl Opt {
+    fn __str__(&self) -> String {
+        return format!("Option(name={:?}, value={:?}", self.name, self.value);
+    }
+
+    fn __repr__(&self) -> String {
+        return self.__str__();
+    }
 }

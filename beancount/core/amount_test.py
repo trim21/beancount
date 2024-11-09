@@ -4,7 +4,7 @@ __license__ = "GNU GPLv2"
 import unittest
 
 from beancount.core.number import D
-from beancount.core.amount import Amount
+from beancount.core.amount import Amount, A
 from beancount.core import amount
 from beancount.core import display_context
 
@@ -41,23 +41,23 @@ class TestAmount(unittest.TestCase):
 
     def test_fromstring(self):
         amount1 = Amount(D("100"), "USD")
-        amount2 = Amount.from_string("100 USD")
+        amount2 = A("100 USD")
         self.assertEqual(amount1, amount2)
 
         amount3 = Amount(D("0.00000001"), "BTC")
-        amount4 = Amount.from_string("0.00000001 BTC")
+        amount4 = A("0.00000001 BTC")
         self.assertEqual(amount3, amount4)
 
-        Amount.from_string("  100.00 USD  ")
+        A("  100.00 USD  ")
 
         with self.assertRaises(ValueError):
-            Amount.from_string("100")
+            A("100")
 
         with self.assertRaises(ValueError):
-            Amount.from_string("USD")
+            A("USD")
 
         # Starting in v3 we will accept single character stock names.
-        Amount.from_string("100.00 U")
+        A("100.00 U")
 
     def test_tostring(self):
         amount1 = Amount(D("100034.023"), "USD")

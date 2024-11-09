@@ -2,8 +2,8 @@
 //! It decide thr order to consume lexer tokens.
 //!
 use crate::data::{
-    Amount, Commodity, CostSpec, Document, Event, Pad, Posting, PostingCost, Price, Query,
-    Transaction,
+    Amount, Balance, Commodity, CostSpec, Document, Event, Opt, Pad, Posting, PostingCost, Price,
+    Query, Transaction,
 };
 use crate::parser::{MyParser, Rule};
 use pyo3::prelude::*;
@@ -18,30 +18,11 @@ use pest::iterators::{Pair, Pairs};
 use pest::Parser;
 use pest_derive::Parser;
 use pyo3::prelude::*;
+use std::backtrace::Backtrace;
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::fmt::format;
 use std::vec;
-
-#[pyclass(frozen)]
-#[derive(Debug, Clone)]
-pub struct Opt {
-    #[pyo3(get)]
-    pub name: String,
-    #[pyo3(get)]
-    pub value: String,
-}
-
-#[pymethods]
-impl Opt {
-    fn __str__(&self) -> String {
-        return format!("Option(name={:?}, value={:?}", self.name, self.value);
-    }
-
-    fn __repr__(&self) -> String {
-        return self.__str__();
-    }
-}
 
 #[pyclass]
 pub struct File {
@@ -50,7 +31,7 @@ pub struct File {
     pub includes: Vec<String>,
 
     #[pyo3(get)]
-    pub options: Vec<Opt>,
+    pub options: Vec<data::Opt>,
 
     #[pyo3(get)]
     pub directives: Vec<Directive>,
@@ -68,12 +49,12 @@ pub enum Directive {
     Price(data::Price),
     Event(data::Event),
     Plugin(data::Plugin),
-    Option(Opt),
-    S(String),
+    Option(data::Opt),
     Custom(data::Custom),
     Note(data::Note),
-    Document(Document),
-    Query(Query),
+    Document(data::Document),
+    Query(data::Query),
+    // S(String),
 }
 
 impl IntoPy<Py<PyAny>> for Directive {
@@ -93,7 +74,7 @@ impl IntoPy<Py<PyAny>> for Directive {
             Directive::Note(x) => x.into_py(py),
             Directive::Document(x) => x.into_py(py),
             Directive::Query(x) => x.into_py(py),
-            Directive::S(x) => x.into_py(py),
+            // Directive::S(x) => x.into_py(py),
         }
     }
 }
@@ -190,7 +171,53 @@ pub fn parse(content: &str) -> ParseResult<File> {
                 includes.push(get_quoted_str(entry.into_inner().next().unwrap())?);
             }
             _ => {
-                let dir = directive(entry, &state)?;
+                let lino = entry.line_col().0;
+                let mut dir = directive(entry, &state)?;
+
+                match &mut dir {
+                    Directive::Open(ref mut dir) => {
+                        dir.meta.insert("lineno".into(), lino.to_string());
+                    }
+                    Directive::Close(ref mut dir) => {
+                        dir.meta.insert("lineno".into(), lino.to_string());
+                    }
+                    Directive::Commodity(ref mut dir) => {
+                        dir.meta.insert("lineno".into(), lino.to_string());
+                    }
+                    Directive::Transaction(ref mut dir) => {
+                        dir.meta.insert("lineno".into(), lino.to_string());
+                    }
+                    Directive::Pad(ref mut dir) => {
+                        dir.meta.insert("lineno".into(), lino.to_string());
+                    }
+                    Directive::Balance(ref mut dir) => {
+                        dir.meta.insert("lineno".into(), lino.to_string());
+                    }
+                    Directive::Price(ref mut dir) => {
+                        dir.meta.insert("lineno".into(), lino.to_string());
+                    }
+                    Directive::Event(ref mut dir) => {
+                        dir.meta.insert("lineno".into(), lino.to_string());
+                    }
+                    Directive::Plugin(ref mut dir) => {
+                        // dir.meta.insert("lineno".into(), lino.to_string());
+                    }
+                    Directive::Option(ref mut dir) => {
+                        dir.meta.insert("lineno".into(), lino.to_string());
+                    }
+                    Directive::Custom(ref mut dir) => {
+                        dir.meta.insert("lineno".into(), lino.to_string());
+                    }
+                    Directive::Note(ref mut dir) => {
+                        dir.meta.insert("lineno".into(), lino.to_string());
+                    }
+                    Directive::Document(ref mut dir) => {
+                        dir.meta.insert("lineno".into(), lino.to_string());
+                    }
+                    Directive::Query(ref mut dir) => {
+                        dir.meta.insert("lineno".into(), lino.to_string());
+                    }
+                }
 
                 directives.push(dir);
             }
@@ -215,11 +242,12 @@ fn directive(directive: Pair<Rule>, state: &ParseState) -> ParseResult<Directive
         Rule::note => note_directive(directive, state)?,
         Rule::pad => pad_directive(directive, state)?,
         Rule::query => query_directive(directive, state)?,
+        Rule::balance => balance_directive(directive, state)?,
         Rule::event => event_directive(directive, state)?,
         Rule::document => document_directive(directive, state)?,
         Rule::price => price_directive(directive, state)?,
         Rule::transaction => transaction_directive(directive, state)?,
-        _ => Directive::S(format!("Unsupported {:#?}", directive).into()),
+        _ => panic!("unexpected directive {:#?}", directive),
     };
     Ok(dir)
 }
@@ -290,7 +318,7 @@ fn transaction_directive<'i>(
                 }
                 Rule::key_value => {
                     let (k, v) = meta_kv_pair(p, state)?;
-                    tx_meta.insert(k.to_string(), v.to_string());
+                    tx_meta.insert(k.to_string(), v);
                 }
                 Rule::tag => {
                     let tag = (&p.as_str()[1..]).into();
@@ -323,10 +351,21 @@ fn transaction_directive<'i>(
     }))
 }
 
+fn meta_kv<'i>(pair: Pair<'i, Rule>, state: &ParseState) -> ParseResult<Metadata> {
+    debug_assert!(pair.as_rule() == Rule::eol_kv_list);
+    pair.into_inner()
+        .map(|p| meta_kv_pair(p, state))
+        .map(|p| match p {
+            Ok((k, v)) => Ok((k.to_string(), v)),
+            Err(e) => Err(e),
+        })
+        .collect::<ParseResult<Metadata>>()
+}
+
 fn meta_kv_pair<'i>(
     pair: Pair<'i, Rule>,
     state: &ParseState,
-) -> ParseResult<(Cow<'i, str>, Cow<'i, str>)> {
+) -> ParseResult<(Cow<'i, str>, String)> {
     debug_assert!(pair.as_rule() == Rule::key_value);
     let span = pair.as_span();
     let mut inner = pair.into_inner();
@@ -340,7 +379,12 @@ fn meta_kv_pair<'i>(
         .and_then(|p| p.into_inner().next())
         .ok_or_else(|| ParseError::invalid_state_with_span("metadata value", span))?;
 
-    Ok((key.into(), value_pair.as_str().into()))
+    let value = match value_pair.as_rule() {
+        Rule::quoted_str => get_quoted_str(value_pair)?,
+        _ => value_pair.as_str().to_string(),
+    };
+
+    Ok((key.into(), value))
 }
 
 fn optional_rule<'i>(rule: Rule, pairs: &mut Pairs<'i, Rule>) -> Option<Pair<'i, Rule>> {
@@ -591,8 +635,8 @@ fn commodity_directive<'i>(
 
     Ok(Directive::Commodity(Commodity {
         date: date(pairs.next().unwrap())?,
-        currency: get_quoted_str(pairs.next().unwrap())?,
-        meta: Metadata::new(),
+        currency: pairs.next().unwrap().as_str().to_string(),
+        meta: meta_kv(pairs.next().unwrap(), state)?,
     }))
 }
 
@@ -606,6 +650,24 @@ fn pad_directive<'i>(directive: Pair<'i, Rule>, state: &ParseState) -> ParseResu
         meta: Metadata::new(),
         account: account(pairs.next().unwrap())?,
         source_account: account(pairs.next().unwrap())?,
+    }))
+}
+
+// 2022-01-01 balance Assets:CC:Federal:PreTax401k  0 DEFCCY
+fn balance_directive<'i>(directive: Pair<'i, Rule>, state: &ParseState) -> ParseResult<Directive> {
+    let source = directive.as_str();
+    let span = directive.as_span();
+    let mut pairs = directive.into_inner();
+
+    Ok(Directive::Balance(Balance {
+        date: date(pairs.next().unwrap())?,
+        meta: Metadata::new(),
+        tolerance: None,
+        account: account(pairs.next().unwrap())?,
+        amount: amount(pairs.next().ok_or_else(|| {
+            ParseError::invalid_input_with_span("missing amount".to_string(), span)
+        })?)?,
+        diff_amount: None,
     }))
 }
 
@@ -669,7 +731,11 @@ fn option_directive<'i>(directive: Pair<'i, Rule>) -> ParseResult<Directive> {
     let name = get_quoted_str(pairs.next().unwrap())?;
     let value = get_quoted_str(pairs.next().unwrap())?;
 
-    Ok(Directive::Option(Opt { name, value }))
+    Ok(Directive::Option(Opt {
+        name,
+        value,
+        meta: Metadata::new(),
+    }))
 }
 
 // 2020-02-01 note Liabilities:CreditCard:CapitalOne "你好"
@@ -748,7 +814,11 @@ fn custom_directive<'i>(directive: Pair<'i, Rule>, state: &ParseState) -> ParseR
 }
 
 fn may_quoted_str<'i>(pair: Pair<'i, Rule>) -> ParseResult<String> {
-    debug_assert!(pair.as_rule() == Rule::quoted_str || pair.as_rule() == Rule::unquoted_str);
+    debug_assert!(
+        pair.as_rule() == Rule::quoted_str || pair.as_rule() == Rule::unquoted_str,
+        "{:#?}",
+        pair
+    );
     if pair.as_rule() == Rule::quoted_str {
         return get_quoted_str(pair);
     }
@@ -757,7 +827,7 @@ fn may_quoted_str<'i>(pair: Pair<'i, Rule>) -> ParseResult<String> {
 }
 
 fn get_quoted_str<'i>(pair: Pair<'i, Rule>) -> ParseResult<String> {
-    debug_assert!(pair.as_rule() == Rule::quoted_str);
+    debug_assert!(pair.as_rule() == Rule::quoted_str, "{:#?}", pair);
     let span = pair.as_span();
     Ok(pair
         .into_inner()

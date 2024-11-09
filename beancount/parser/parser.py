@@ -117,6 +117,7 @@ import inspect
 import textwrap
 import io
 import sys
+from pathlib import Path
 
 from beancount.__beancount import parse
 
@@ -198,8 +199,8 @@ def parse_file(
         elif not isinstance(file, io.IOBase):
             file = ctx.enter_context(open(file, "rb"))
         content = file.read()
+    Path("test.bean").write_bytes(content)
     r = parse(content.decode())
-    print(r)
     return r.directives, [], r.options
 
 

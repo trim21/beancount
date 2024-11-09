@@ -1,6 +1,5 @@
 use crate::data::{self, Close, Custom, Metadata, Note, Open, Plugin};
 use crate::error::{ParseError, ParseResult};
-use crate::parse::{Directive, File, Opt};
 use crate::ParserError;
 use chrono::NaiveDate;
 use pest::iterators::{Pair, Pairs};
