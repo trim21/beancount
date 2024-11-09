@@ -2,6 +2,7 @@ __copyright__ = "Copyright (C) 2014-2017  Martin Blais"
 __license__ = "GNU GPLv2"
 
 import unittest
+from decimal import Decimal
 
 from beancount.core.number import D
 from beancount.core.amount import Amount, A
@@ -14,14 +15,9 @@ class TestAmount(unittest.TestCase):
         amount = Amount(D("100,034.02"), "USD")
         self.assertEqual(amount.number, D("100034.02"))
 
-        # Ensure that it is possible to initialize the number to any object.
-        # This is used when creating incomplete objects.
-        class Dummy:
-            pass
-
-        amount = Amount(Dummy, Dummy)
-        self.assertIs(amount.number, Dummy)
-        self.assertIs(amount.currency, Dummy)
+        amount = Amount("2.33", "EEE")
+        self.assertEqual(amount.number, Decimal("2.33"))
+        self.assertEqual(amount.currency, "EEE")
 
     def test_mutation(self):
         amount1 = Amount(D("100"), "USD")
@@ -29,11 +25,11 @@ class TestAmount(unittest.TestCase):
         # Test how changing existing attributes should fail.
         with self.assertRaises(AttributeError) as ctx:
             amount1.currency = "CAD"
-        self.assertRegex("can't set attribute", str(ctx.exception))
+        self.assertRegex(str(ctx.exception), "objects is not writable")
 
         with self.assertRaises(AttributeError) as ctx:
             amount1.number = D("200")
-        self.assertRegex("can't set attribute", str(ctx.exception))
+        self.assertRegex(str(ctx.exception), "objects is not writable")
 
         # Try setting a new attribute.
         with self.assertRaises(AttributeError):

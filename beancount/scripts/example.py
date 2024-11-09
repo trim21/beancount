@@ -16,7 +16,6 @@ import re
 import sys
 import textwrap
 
-import rich
 from dateutil import rrule
 import dateutil.parser
 
@@ -396,8 +395,7 @@ def generate_employment_income(
     Returns:
       A list of directives, including open directives for the account.
     """
-    preamble = parse(
-        f"""
+    preamble = parse(f"""
 
         {date_begin} event "employer" "{employer_name}, {employer_address}"
 
@@ -416,8 +414,7 @@ def generate_employment_income(
 
         ;{date_begin} open Expenses:Vacation:Employer
 
-    """
-    )
+    """)
 
     date_prev = None
 
@@ -519,14 +516,12 @@ def generate_tax_preamble(date_birth):
     Returns:
       A list of directives.
     """
-    return parse(
-        f"""
+    return parse(f"""
       ;; Tax accounts not specific to a year.
       {date_birth} open Income:CC:Federal:PreTax401k     DEFCCY
       {date_birth} open Assets:CC:Federal:PreTax401k     DEFCCY
 
-    """
-    )
+    """)
 
 
 def generate_tax_accounts(year, date_max):
@@ -556,8 +551,7 @@ def generate_tax_accounts(year, date_max):
     amount_limit = RETIREMENT_LIMITS.get(year, RETIREMENT_LIMITS[None])
     amount_limit_neg = -amount_limit
 
-    entries = parse(
-        f"""
+    entries = parse(f"""
 
       ;; Open tax accounts for that year.
       {date_year} open Expenses:Taxes:Y{year}:CC:Federal:PreTax401k   DEFCCY
@@ -588,8 +582,7 @@ def generate_tax_accounts(year, date_max):
         Assets:CC:Bank1:Checking       {amount_state_neg:.2f} CCY
         Liabilities:AccountsPayable    {amount_state:.2f} CCY
 
-    """
-    )
+    """)
 
     return [entry for entry in entries if entry.date < date_max]
 
@@ -606,28 +599,24 @@ def generate_retirement_employer_match(entries, account_invest, account_income):
     """
     match_frac = D("0.50")
 
-    new_entries = parse(
-        f"""
+    new_entries = parse(f"""
 
       {entries[0].date} open {account_income}   CCY
 
-    """
-    )
+    """)
 
     for txn_posting, balances in postings_for(entries, [account_invest]):
         amount = txn_posting.posting.units.number * match_frac
         amount_neg = -amount
         date = txn_posting.txn.date + ONE_DAY
         new_entries.extend(
-            parse(
-                f"""
+            parse(f"""
 
           {date} * "Employer match for contribution"
             {account_invest}         {amount:.2f} CCY
             {account_income}         {amount_neg:.2f} CCY
 
-        """
-            )
+        """)
         )
 
     return new_entries
@@ -649,8 +638,7 @@ def generate_retirement_investments(entries, account, commodities_items, price_m
     account_cash = join(account, "Cash")
     date_origin = entries[0].date
     open_entries.extend(
-        parse(
-            f"""
+        parse(f"""
 
       {date_origin} open {account} CCY
         institution: "Retirement_Institution"
@@ -660,17 +648,14 @@ def generate_retirement_investments(entries, account, commodities_items, price_m
       {date_origin} open {account_cash} CCY
         number: "882882"
 
-    """
-        )
+    """)
     )
     for currency, _ in commodities_items:
         open_entries.extend(
-            parse(
-                f"""
+            parse(f"""
           {date_origin} open {account}:{currency} {currency}
             number: "882882"
-        """
-            )
+        """)
         )
 
     new_entries = []
@@ -692,15 +677,13 @@ def generate_retirement_investments(entries, account, commodities_items, price_m
             amount_cash = (units * price).quantize(D("0.01"))
             amount_cash_neg = -amount_cash
             new_entries.extend(
-                parse(
-                    f"""
+                parse(f"""
 
               {txn_date} * "Investing {fraction:.0%} of cash in {commodity}"
                 {account}:{commodity}  {units:.3f} {commodity} {{{price:.2f} CCY}}
                 {account}:Cash         {amount_cash_neg:.2f} CCY
 
-            """
-                )
+            """)
             )
 
             balance.add_amount(amount.Amount(-amount_cash, "CCY"))
@@ -721,8 +704,7 @@ def generate_banking(entries, date_begin, date_end, amount_initial):
       A list of directives.
     """
     amount_initial_neg = -amount_initial
-    new_entries = parse(
-        f"""
+    new_entries = parse(f"""
 
       {date_begin} open Assets:CC:Bank1
         institution: "Bank1_Institution"
@@ -738,8 +720,7 @@ def generate_banking(entries, date_begin, date_end, amount_initial):
         Assets:CC:Bank1:Checking   {amount_initial} CCY
         Equity:Opening-Balances    {amount_initial_neg} CCY
 
-    """
-    )
+    """)
 
     date_balance = date_begin + datetime.timedelta(days=1)
     account = "Assets:CC:Bank1:Checking"
@@ -749,13 +730,11 @@ def generate_banking(entries, date_begin, date_end, amount_initial):
         if txn_posting.txn.date >= date_balance:
             break
     amount_balance = balances[account].get_currency_units("CCY").number
-    bal_entries = parse(
-        f"""
+    bal_entries = parse(f"""
 
       {date_balance} balance Assets:CC:Bank1:Checking   {amount_balance} CCY
 
-    """
-    )
+    """)
 
     return new_entries + bal_entries
 
@@ -780,20 +759,16 @@ def generate_taxable_investment(date_begin, date_end, entries, price_map, stocks
     dividends = "Dividend"
     accounts_stocks = ["Assets:CC:Investment:{}".format(commodity) for commodity in stocks]
 
-    open_entries = parse(
-        f"""
+    open_entries = parse(f"""
       {date_begin} open {account}:Cash    CCY
       {date_begin} open {account_gains}    CCY
-    """
-    )
+    """)
     for stock in stocks:
         open_entries.extend(
-            parse(
-                f"""
+            parse(f"""
           {date_begin} open {account}:{stock} {stock}
           {date_begin} open {income}:{stock}:{dividends}    CCY
-        """
-            )
+        """)
         )
 
     # Figure out dates at which dividends should be distributed, near the end of
@@ -840,13 +815,11 @@ def generate_taxable_investment(date_begin, date_end, entries, price_map, stocks
             amount_cash = (frac_dividend * portfolio_cost).quantize(D("0.01"))
             amount_cash_neg = -amount_cash
             stock = random.choice(stocks)
-            cash_dividend = parse(
-                f"""
+            cash_dividend = parse(f"""
               {next_dividend_date} * "Dividends on portfolio"
                 {account}:Cash        {amount_cash:.2f} CCY
                 {income}:{stock}:{dividends}   {amount_cash_neg:.2f} CCY
-            """
-            )[0]
+            """)[0]
             new_entries.append(cash_dividend)
 
             # Advance the next dividend date.
@@ -873,16 +846,13 @@ def generate_taxable_investment(date_begin, date_end, entries, price_map, stocks
                     # logging.info('Buying %s %s @ %s CCY = %s CCY',
                     #              units, stock, price, units * price)
 
-                    buy = parse(
-                        f"""
+                    buy = parse(f"""
                       {date} * "Buy shares of {stock}"
                         {account}:Cash                  {amount_cash:.2f} CCY
                         {account}:{stock}               {units:.0f} {stock} {{{price:.2f} CCY}}
                         Expenses:Financial:Commissions  {commission:.2f} CCY
-                    """
-                    )[0]
+                    """)[0]
                     new_entries.append(buy)
-                    rich.print(buy)
 
                     account_stock = ":".join([account, stock])
                     balances[account_cash].add_position(buy.postings[0])
@@ -918,15 +888,13 @@ def generate_taxable_investment(date_begin, date_end, entries, price_map, stocks
             stock = sell_position.units.currency
             amount_cash = market_value - commission
             amount_gain = -gain
-            sell = parse(
-                f"""
+            sell = parse(f"""
               {date} * "Sell shares of {stock}"
                 {account}:{stock}               {sell_position} @ {price:.2f} CCY
                 {account}:Cash                  {amount_cash:.2f} CCY
                 Expenses:Financial:Commissions  {commission:.2f} CCY
                 {account_gains}                 {amount_gain:.2f} CCY
-            """
-            )[0]
+            """)[0]
             new_entries.append(sell)
 
             balances[account_cash].add_position(sell.postings[1])
@@ -962,13 +930,11 @@ def generate_periodic_expenses(
         )
         amount_neg = -amount
         new_entries.extend(
-            parse(
-                f"""
+            parse(f"""
           {date} * "{txn_payee}" "{txn_narration}"
             {account_from}    {amount_neg:.2f} CCY
             {account_to}      {amount:.2f} CCY
-        """
-            )
+        """)
         )
 
     return new_entries
@@ -1006,13 +972,11 @@ def generate_clearing_entries(
             pos_amount = balance_clear.get_currency_units("CCY")
             neg_amount = -pos_amount
             new_entries.extend(
-                parse(
-                    f"""
+                parse(f"""
               {next_date} * "{payee}" "{narration}"
                 {account_clear}     {neg_amount.number:.2f} CCY
                 {account_from}      {pos_amount.number:.2f} CCY
-            """
-                )
+            """)
             )
             balance_clear.add_amount(neg_amount)
 
@@ -1079,13 +1043,11 @@ def generate_outgoing_transfers(
             date = txn_posting.txn.date + datetime.timedelta(days=1)
             amount_transfer_neg = -amount_transfer
             new_entries.extend(
-                parse(
-                    f"""
+                parse(f"""
               {date} * "Transfering accumulated savings to other account"
                 {account}          {amount_transfer_neg:2f} CCY
                 {account_out}      {amount_transfer:2f} CCY
-            """
-                )
+            """)
             )
 
             offset_amount += amount_transfer
@@ -1101,8 +1063,7 @@ def generate_expense_accounts(date_birth):
     Returns:
       A list of directives.
     """
-    return parse(
-        f"""
+    return parse(f"""
 
       {date_birth} open Expenses:Food:Groceries
       {date_birth} open Expenses:Food:Restaurant
@@ -1119,8 +1080,7 @@ def generate_expense_accounts(date_birth):
       {date_birth} open Expenses:Financial:Fees
       {date_birth} open Expenses:Financial:Commissions
 
-    """
-    )
+    """)
 
 
 def generate_open_entries(date, accounts, currency=None):
@@ -1163,11 +1123,9 @@ def generate_balance_checks(entries, account, date_iter):
             while txn_posting.txn.date >= next_date:
                 amount = balance[account].get_currency_units("CCY").number
                 balance_checks.extend(
-                    parse(
-                        f"""
+                    parse(f"""
                   {next_date} balance {account} {amount} CCY
-                """
-                    )
+                """)
                 )
                 next_date = next(date_iter)
 
@@ -1397,35 +1355,29 @@ def generate_trip_entries(
                 amount = random.normalvariate(mu, sigma3 / 3.0)
                 amount_neg = -amount
                 new_entries.extend(
-                    parse(
-                        f"""
+                    parse(f"""
                   {date} * "{payee}" "" #{tag}
                     {account_credit}     {amount_neg:.2f} CCY
                     {account_expense}    {amount:.2f} CCY
-                """
-                    )
+                """)
                 )
 
     # Consume the vacation days.
     vacation_hrs = (date_end - date_begin).days * 8  # hrs/day
     new_entries.extend(
-        parse(
-            f"""
+        parse(f"""
       {date_end} * "Consume vacation days"
         Assets:CC:Employer1:Vacation -{vacation_hrs:.2f} VACHR
         Expenses:Vacation             {vacation_hrs:.2f} VACHR
-    """
-        )
+    """)
     )
 
     # Generate events for the trip.
     new_entries.extend(
-        parse(
-            f"""
+        parse(f"""
       {date_begin} event "location" "{trip_city}"
       {date_end}   event "location" "{home_city}"
-    """
-        )
+    """)
     )
 
     return new_entries
@@ -1510,8 +1462,7 @@ def generate_commodity_entries(date_birth):
     Returns:
       A list of Commodity entries for all the commodities in use.
     """
-    return parse(
-        f"""
+    return parse(f"""
 
         1792-01-01 commodity USD
           name: "US Dollar"
@@ -1558,8 +1509,7 @@ def generate_commodity_entries(date_birth):
         1900-01-01 commodity VMMXX
           export: "MUTF:VMMXX (MONEY:USD)"
 
-    """
-    )
+    """)
 
 
 def contextualize_file(contents, employer):

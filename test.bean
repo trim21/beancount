@@ -1,5 +1,23 @@
 
-2022-11-17 * "Buy shares of STK2"
-  Assets:CC:Investment:Cash                  -991.65 CCY
-  Assets:CC:Investment:STK2               31 STK2 {31.70 CCY}
-  Expenses:Financial:Commissions  8.95 CCY
+
+2012-02-01 open Assets:US:Cash
+2012-02-01 open Assets:US:Credit-Card
+2012-02-01 open Expenses:Grocery
+2012-02-01 open Expenses:Coffee
+2012-02-01 open Expenses:Restaurant
+
+2012-05-18 * "Buying food" #dinner
+  Expenses:Restaurant         100 USD
+  Expenses:Grocery            200 USD
+  Assets:US:Cash
+
+2013-06-20 * "Whole Foods Market" "Buying books" #books #dinner ^ee89ada94a39
+  Expenses:Restaurant         150 USD
+  Assets:US:Credit-Card
+
+2013-06-22 * "La Colombe" "Buying coffee"  ^ee89ada94a39
+  Expenses:Coffee         5 USD
+  Assets:US:Cash
+
+2014-02-01 close Assets:US:Cash
+2014-02-01 close Assets:US:Credit-Card

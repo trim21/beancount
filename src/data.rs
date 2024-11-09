@@ -1,14 +1,12 @@
-use crate::parser::{MyParser, Rule};
 use crate::ParserError;
 use chrono::NaiveDate;
-use lazy_static::lazy_static;
-use pest::Parser;
+use pyo3::exceptions::PyTypeError;
 use pyo3::prelude::*;
-use pyo3::types::{PyAnyMethods, PyString};
+use pyo3::types::{PyAnyMethods, PyString, PyTuple};
 use pyo3::{pyclass, pymethods, Bound, PyAny, PyResult};
 use rust_decimal::Decimal;
 use std::collections::{HashMap, HashSet};
-use std::fmt::format;
+use std::hash::{DefaultHasher, Hash, Hasher};
 
 pub type Metadata = HashMap<String, String>;
 
@@ -193,6 +191,25 @@ pub struct Cost {
     pub label: Option<String>,
 }
 
+#[pymethods]
+impl Cost {
+    #[new]
+    #[pyo3(signature = (number, currency, date,  label=None))]
+    fn py_new(
+        number: Decimal,
+        currency: Currency,
+        date: NaiveDate,
+        label: Option<String>,
+    ) -> PyResult<Self> {
+        return Ok(Cost {
+            date,
+            number,
+            currency,
+            label,
+        });
+    }
+}
+
 #[pyclass(module = "beancount.__beancount")]
 #[derive(Debug, Clone)]
 pub struct CostSpec {
@@ -275,8 +292,8 @@ impl Transaction {
 //     }
 // }
 
-#[pyclass(module = "beancount.__beancount")]
-#[derive(Debug, Clone, PartialEq)]
+#[pyclass(module = "beancount.__beancount", frozen)]
+#[derive(Debug, Clone, PartialEq, Hash)]
 pub struct Amount {
     /// The value (decimal) part
     #[pyo3(get)]
@@ -294,12 +311,72 @@ impl Amount {
         return Ok(Amount { number, currency });
     }
 
+    fn __str__(&self) -> String {
+        match self.number {
+            Some(n) => {
+                return format!("{} {}", n, self.currency).to_string();
+            }
+            None => {
+                return format!("None {}", self.currency).to_string();
+            }
+        }
+    }
+
+    fn to_string<'py>(
+        &self,
+        py: Python<'py>,
+        fmt: &Bound<'py, PyAny>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        match self.number {
+            Some(n) => {
+                let format: Bound<'py, PyAny> = fmt.getattr("format")?.into();
+                let args = PyTuple::new_bound(py, &[n]);
+                let mut s = format.call1(args)?.extract::<String>()?;
+                s.push(' ');
+                s.push_str(&self.currency);
+                return Ok(s.into_py(py).into_bound(py));
+            }
+            None => {
+                return Ok(format!("None {}", self.currency)
+                    .to_string()
+                    .into_py(py)
+                    .into_bound(py));
+            }
+        }
+    }
+
+    fn __lt__(&self, other: &Self) -> PyResult<bool> {
+        if self.currency != other.currency {
+            return Ok(self.currency < other.currency);
+        }
+
+        return match (self.number, other.number) {
+            (Some(a), Some(b)) => Ok(a < b),
+            _ => Err(PyTypeError::new_err(
+                "'<' not supported between instances of 'NoneType' and 'decimal.Decimal'"
+                    .to_string(),
+            )),
+        };
+    }
+
+    fn __eq__(&self, other: &Self) -> bool {
+        return self == other;
+    }
+
+    fn __hash__(&self) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        self.hash(&mut hasher);
+        return hasher.finish();
+    }
+
     fn __neg__(&self) -> Self {
         return Self {
             number: self.number.clone().map(|n| -n),
             currency: self.currency.clone(),
         };
     }
+
+    // fn __hash__() {}
 }
 
 #[pyclass(module = "beancount.__beancount")]

@@ -1,6 +1,6 @@
 import datetime
 from decimal import Decimal
-from typing import Optional, Dict, Any, FrozenSet, Set
+from typing import Optional, Dict, Any, FrozenSet, Self, Set
 
 class File:
     includes: list[str]
@@ -192,6 +192,10 @@ class Cost:
     date: datetime.date
     label: Optional[str]
 
+    def __init__(
+        self, number: Decimal | str, currency: str, date: datetime.date, label: str, /
+    ) -> None: ...
+
 class Posting:
     """
     Postings are contained in Transaction entries. These represent the individual
@@ -257,6 +261,7 @@ class Amount:
     currency: str
 
     def __init__(self, number: Optional[str | int | float], currency: str) -> None: ...
+    def __lt__(self, other: Self) -> bool: ...
 
 class Price:
     """

@@ -1,6 +1,7 @@
 __copyright__ = "Copyright (C) 2014-2016  Martin Blais"
 __license__ = "GNU GPLv2"
 
+import os
 import unittest
 import types
 
@@ -133,23 +134,26 @@ class TestWalk(test_utils.TmpFilesTestBase):
 
         self.assertEqual(
             [
-                ("/Assets/Cäsh", "Assets:Cäsh", [], ["2023-08-18.test.pdf"]),
-                ("/Assets/US", "Assets:US", ["Bank"], []),
-                ("/Assets/US/Bank", "Assets:US:Bank", ["Checking", "Savings"], []),
-                (
-                    "/Assets/US/Bank/Checking",
-                    "Assets:US:Bank:Checking",
-                    ["otherdir"],
-                    ["2014-06-08.bank-statement.pdf", "other.txt"],
-                ),
-                (
-                    "/Assets/US/Bank/Savings",
-                    "Assets:US:Bank:Savings",
-                    [],
-                    ["2014-07-01.savings.pdf"],
-                ),
-                ("/Liabilities/US", "Liabilities:US", ["Bank"], []),
-                ("/Liabilities/US/Bank", "Liabilities:US:Bank", [], []),
+                (path.replace("/", os.sep), *rest)
+                for path, *rest in [
+                    ("/Assets/Cäsh", "Assets:Cäsh", [], ["2023-08-18.test.pdf"]),
+                    ("/Assets/US", "Assets:US", ["Bank"], []),
+                    ("/Assets/US/Bank", "Assets:US:Bank", ["Checking", "Savings"], []),
+                    (
+                        "/Assets/US/Bank/Checking",
+                        "Assets:US:Bank:Checking",
+                        ["otherdir"],
+                        ["2014-06-08.bank-statement.pdf", "other.txt"],
+                    ),
+                    (
+                        "/Assets/US/Bank/Savings",
+                        "Assets:US:Bank:Savings",
+                        [],
+                        ["2014-07-01.savings.pdf"],
+                    ),
+                    ("/Liabilities/US", "Liabilities:US", ["Bank"], []),
+                    ("/Liabilities/US/Bank", "Liabilities:US:Bank", [], []),
+                ]
             ],
             actual_data,
         )

@@ -325,7 +325,7 @@ class Position(_Position):
         # Parse a cost expression.
         cost_number = None
         cost_currency = None
-        date = None
+        date = datetime.date(1, 1, 1)
         label = None
         cost_expression = match.group(3)
         if match.group(3):
