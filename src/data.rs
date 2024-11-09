@@ -5,6 +5,7 @@ use pyo3::types::{PyAnyMethods, PyString};
 use pyo3::{pyclass, pymethods, Bound, PyAny, PyResult};
 use rust_decimal::Decimal;
 use std::collections::{HashMap, HashSet};
+use std::fmt::format;
 
 pub type Metadata = HashMap<String, String>;
 
@@ -146,6 +147,19 @@ pub struct Posting {
     pub price: Option<Amount>,
     #[pyo3(get)]
     pub flag: Option<char>,
+
+    #[pyo3(get)]
+    pub source: String,
+}
+
+#[pymethods]
+impl Posting {
+    fn __repr__(&self) -> String {
+        format!(
+            "Posting(metadata={:?}, account={:?}, units={:?}, cost={:?}, price={:?}, flag={:?})",
+            self.metadata, self.account, self.units, self.cost, self.price, self.flag
+        )
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -259,7 +273,7 @@ impl Transaction {
 pub struct Amount {
     /// The value (decimal) part
     #[pyo3(get)]
-    pub number: Decimal,
+    pub number: Option<Decimal>,
     /// Currency
     #[pyo3(get)]
     pub currency: Currency,
@@ -268,9 +282,10 @@ pub struct Amount {
 #[pymethods]
 impl Amount {
     #[new]
-    fn new(value: Decimal, currency: &Bound<'_, PyAny>) -> PyResult<Self> {
+    #[pyo3(signature=(number, currency))]
+    fn new(number: Option<Decimal>, currency: &Bound<'_, PyAny>) -> PyResult<Self> {
         return Ok(Amount {
-            number: value,
+            number,
             currency: currency.extract()?,
         });
     }

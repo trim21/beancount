@@ -147,6 +147,8 @@ class Posting:
     price: Optional[Amount]
     flag: Optional[Flag]
 
+    source: str
+
 # A set of valid booking method names for positions on accounts.
 # See http://furius.ca/beancount/doc/inventories for a full explanation.
 class Booking:
