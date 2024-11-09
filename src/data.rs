@@ -13,10 +13,15 @@ pub type Currency = String;
 #[pyclass]
 #[derive(Debug, Clone)]
 pub struct Open {
+    #[pyo3(get)]
     pub meta: Metadata,
+    #[pyo3(get)]
     pub date: NaiveDate,
+    #[pyo3(get)]
     pub account: String,
+    #[pyo3(get)]
     pub currencies: Vec<Currency>,
+    #[pyo3(get)]
     pub booking: Option<Booking>,
 }
 
@@ -41,8 +46,11 @@ impl Open {
 #[pyclass]
 #[derive(Debug, Clone)]
 pub struct Close {
+    #[pyo3(get)]
     pub meta: Metadata,
+    #[pyo3(get)]
     pub date: NaiveDate,
+    #[pyo3(get)]
     pub account: String,
 }
 
@@ -63,8 +71,11 @@ impl Close {
 #[pyclass]
 #[derive(Debug, Clone)]
 pub struct Commodity {
+    #[pyo3(get)]
     pub meta: Metadata,
+    #[pyo3(get)]
     pub date: NaiveDate,
+    #[pyo3(get)]
     pub currency: Currency,
 }
 
@@ -81,9 +92,13 @@ impl Commodity {
 #[pyclass]
 #[derive(Debug, Clone)]
 pub struct Pad {
+    #[pyo3(get)]
     pub meta: Metadata,
+    #[pyo3(get)]
     pub date: NaiveDate,
+    #[pyo3(get)]
     pub account: String,
+    #[pyo3(get)]
     pub source_account: String,
 }
 
@@ -100,11 +115,17 @@ impl Pad {
 #[pyclass]
 #[derive(Debug, Clone)]
 pub struct Balance {
+    #[pyo3(get)]
     pub meta: Metadata,
+    #[pyo3(get)]
     pub date: NaiveDate,
+    #[pyo3(get)]
     pub account: String,
+    #[pyo3(get)]
     pub amount: Amount,
+    #[pyo3(get)]
     pub tolerance: Option<rust_decimal::Decimal>,
+    #[pyo3(get)]
     pub diff_amount: Option<Amount>,
 }
 
@@ -113,11 +134,17 @@ pub struct Balance {
 #[pyclass]
 #[derive(Debug, Clone)]
 pub struct Posting {
+    #[pyo3(get)]
     pub metadata: Metadata,
+    #[pyo3(get)]
     pub account: String,
+    #[pyo3(get)]
     pub units: Option<Amount>,
+    #[pyo3(get)]
     pub cost: Option<PostingCost>,
+    #[pyo3(get)]
     pub price: Option<Amount>,
+    #[pyo3(get)]
     pub flag: Option<char>,
 }
 fn convert_date(x: &beancount_parser::Date) -> Result<NaiveDate, PyErr> {
@@ -127,30 +154,25 @@ fn convert_date(x: &beancount_parser::Date) -> Result<NaiveDate, PyErr> {
     }
 }
 
-
 impl TryFrom<&beancount_parser::Posting<Decimal>> for Posting {
     type Error = PyErr;
 
     fn try_from(value: &beancount_parser::Posting<Decimal>) -> Result<Self, Self::Error> {
         let cost = match &value.cost {
             None => None,
-            Some(c) => {
-                Some(PostingCost::Cost(Cost {
-                    date: convert_date(&c.date.unwrap())?,
-                    number: c.amount.clone().unwrap().value,
-                    currency: c.amount.clone().unwrap().currency.to_string(),
-                    label: None,
-                }))
-            }
+            Some(c) => Some(PostingCost::Cost(Cost {
+                date: convert_date(&c.date.unwrap())?,
+                number: c.amount.clone().unwrap().value,
+                currency: c.amount.clone().unwrap().currency.to_string(),
+                label: None,
+            })),
         };
 
         return Ok(Posting {
             metadata: value
                 .metadata
                 .iter()
-                .map(|entry| {
-                    (entry.0.to_string(), format!("{:?}", entry.1))
-                })
+                .map(|entry| (entry.0.to_string(), format!("{:?}", entry.1)))
                 .collect(),
             account: value.account.to_string(),
             units: None,
@@ -167,36 +189,63 @@ pub enum PostingCost {
     CostSpec(CostSpec),
 }
 
+impl IntoPy<Py<PyAny>> for PostingCost {
+    fn into_py(self, py: Python) -> Py<PyAny> {
+        return match self {
+            PostingCost::Cost(x) => x.into_py(py),
+            PostingCost::CostSpec(x) => x.into_py(py),
+        };
+    }
+}
+
 #[pyclass]
 #[derive(Debug, Clone)]
 pub struct Cost {
+    #[pyo3(get)]
     pub date: NaiveDate,
+    #[pyo3(get)]
     pub number: Decimal,
+    #[pyo3(get)]
     pub currency: Currency,
+    #[pyo3(get)]
     pub label: Option<String>,
 }
 
 #[pyclass]
 #[derive(Debug, Clone)]
 pub struct CostSpec {
+    #[pyo3(get)]
     pub number_per: Option<Decimal>,
+    #[pyo3(get)]
     pub number_total: Option<Decimal>,
+    #[pyo3(get)]
     pub currency: Option<Currency>,
+    #[pyo3(get)]
     pub date: Option<NaiveDate>,
+    #[pyo3(get)]
     pub label: Option<String>,
+    #[pyo3(get)]
     pub merge: Option<bool>,
 }
 
 #[pyclass]
 #[derive(Debug, Clone)]
 pub struct Transaction {
+    #[pyo3(get)]
     pub meta: Metadata,
+    #[pyo3(get)]
     pub date: NaiveDate,
+    #[pyo3(get)]
     pub flag: char,
+    #[pyo3(get)]
     pub payee: Option<String>,
+    #[pyo3(get)]
     pub narration: String,
+    #[pyo3(get)]
     pub tags: HashSet<String>,
+    #[pyo3(get)]
     pub links: HashSet<String>,
+    #[pyo3(get)]
     pub postings: Vec<Posting>,
 }
 
@@ -377,8 +426,12 @@ impl Booking {
 #[pyclass]
 #[derive(Debug, Clone)]
 pub struct Event {
-    pub meta: Metadata,  // PyDict
-    pub date: NaiveDate, // PyDate
+    #[pyo3(get)]
+    pub meta: Metadata,
+    #[pyo3(get)]
+    pub date: NaiveDate,
+    #[pyo3(get)]
     pub typ: String,
+    #[pyo3(get)]
     pub description: String,
 }

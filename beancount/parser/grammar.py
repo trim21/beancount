@@ -35,7 +35,6 @@ from beancount.core.data import Posting
 from beancount.core.data import Booking
 from beancount.core.data import EMPTY_SET
 
-from beancount.parser import lexer
 from beancount.parser import options
 from beancount.core import account
 from beancount.core import data
@@ -111,13 +110,11 @@ def valid_account_regexp(options):
 TagsLinks = collections.namedtuple("TagsLinks", "tags links")
 
 
-class Builder(lexer.LexBuilder):
+class Builder:
     """A builder used by the lexer and grammar parser as callbacks to create
     the data objects corresponding to rules parsed from the input file."""
 
     def __init__(self):
-        lexer.LexBuilder.__init__(self)
-
         # A stack of the current active tags.
         self.tags = []
 

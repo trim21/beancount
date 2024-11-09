@@ -118,8 +118,8 @@ import textwrap
 import io
 import sys
 
-from beancount.parser import _parser
-from beancount.parser import grammar
+from beancount.__beancount import parse
+
 from beancount.parser import printer
 from beancount.core import data
 from beancount.core.number import MISSING
@@ -197,11 +197,10 @@ def parse_file(
         # readinto() method.
         elif not isinstance(file, io.IOBase):
             file = ctx.enter_context(open(file, "rb"))
-            content = file.read()
-    builder = grammar.Builder()
-    parser = _parser.Parser(builder, debug=debug)
-    parser.parse(content, filename=report_filename, lineno=report_firstline, **kw)
-    return builder.finalize()
+        content = file.read()
+    r = parse(content.decode())
+    print(r)
+    return r.directives, [], r.options
 
 
 def parse_string(string, report_filename=None, dedent=False, **kw):

@@ -11,8 +11,8 @@ this later on.
 __copyright__ = "Copyright (C) 2014-2017  Martin Blais"
 __license__ = "GNU GPLv2"
 
-import enum
 import re
+from collections import namedtuple
 from typing import Tuple
 
 from beancount.core import account
@@ -26,13 +26,7 @@ from beancount.core.account import Account
 #   equity: a str, the name of the prefix for the Equity subaccounts.
 #   income: a str, the name of the prefix for the Income subaccounts.
 #   expenses: a str, the name of the prefix for the Expenses subaccounts.
-class AccountTypes(enum.StrEnum):
-    assets = "assets"
-    liabilities = "liabilities"
-    equity = "equity"
-    income = "income"
-    expenses = "expenses"
-
+AccountTypes = namedtuple("AccountTypes", "assets liabilities equity income expenses")
 
 # Default values for root accounts.
 DEFAULT_ACCOUNT_TYPES = AccountTypes(

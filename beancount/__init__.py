@@ -8,7 +8,7 @@ __license__ = "GNU GPLv2"
 # Read in the VERSION number from package data.
 __version__ = importlib.metadata.version("beancount")
 
-print(__version__)
+# print(__version__)
 
 # Expose the public API.
 # from .api import *  # noqa: E402, F403

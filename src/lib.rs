@@ -4,6 +4,7 @@ use pyo3::prelude::*;
 mod data;
 mod decimal;
 mod parse;
+mod parser;
 
 #[pymodule]
 fn __beancount(m: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -21,6 +22,7 @@ fn __beancount(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<data::Posting>()?;
     m.add_class::<data::Transaction>()?;
     m.add_function(wrap_pyfunction!(parse::parse, m)?)?;
+    m.add_function(wrap_pyfunction!(parse::parse2, m)?)?;
 
     // parser::register_child_module(m)
     return Ok(());
