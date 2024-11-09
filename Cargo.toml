@@ -7,7 +7,6 @@ name = "beancount"
 crate-type = ["cdylib"]
 
 [dependencies]
-beancount-parser = "2.2.1"
 chrono = "0.4.38"
 pest = "2.7.14"
 pyo3 = { version = "0.22.6", features = ['abi3-py38', 'extension-module', 'rust_decimal', 'chrono'] }

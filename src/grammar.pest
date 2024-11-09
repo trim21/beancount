@@ -89,7 +89,7 @@ event = { date ~ "event" ~ quoted_str ~ quoted_str ~ eol_kv_list }
 include = { "include" ~ quoted_str ~ eol }
 
 // 2013-11-03 note Liabilities:CreditCard "Called about fraudulent card."
-note = { date ~ "note" ~ account ~ quoted_str ~ eol_kv_list }
+note = { date ~ "note" ~ account ~ quoted_str ~ tags_links ~ eol_kv_list }
 
 // 2014-05-01 open Liabilities:CreditCard:CapitalOne USD
 open = { date ~ "open" ~ account ~ commodity_list? ~ quoted_str? ~ eol_kv_list }

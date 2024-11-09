@@ -1,11 +1,22 @@
-use crate::data::Amount;
-use crate::decimal::Decimal;
+use crate::data::{Amount, Commodity, Document, Event, Pad, Posting, Price, Query, Transaction};
+use crate::parser::{MyParser, Rule};
 use pyo3::prelude::*;
+use rust_decimal::Decimal;
 
-use crate::{data, ParserError};
-use beancount_parser::metadata::Value;
-use beancount_parser::{BeancountFile, DirectiveContent};
+use crate::data::{self, Close, Custom, Metadata, Note, Open, Plugin};
+use crate::error::{ParseError, ParseResult};
+use crate::ParserError;
 use chrono::NaiveDate;
+use core::num;
+use pest::iterators::{Pair, Pairs};
+use pest::Parser;
+use pest_derive::Parser;
+use pyo3::prelude::*;
+use std::borrow::Cow;
+use std::collections::{HashMap, HashSet};
+use std::fmt::format;
+use std::fs::Metadata;
+use std::vec;
 
 #[pyclass(frozen)]
 #[derive(Debug, Clone)]
@@ -55,6 +66,9 @@ pub enum Directive {
     Option(Opt),
     S(String),
     Custom(data::Custom),
+    Note(data::Note),
+    Document(Document),
+    Query(Query),
 }
 
 impl IntoPy<Py<PyAny>> for Directive {
@@ -71,149 +85,691 @@ impl IntoPy<Py<PyAny>> for Directive {
             Directive::Event(x) => x.into_py(py),
             Directive::Plugin(x) => x.into_py(py),
             Directive::Option(x) => x.into_py(py),
+            Directive::Note(x) => x.into_py(py),
+            Directive::Document(x) => x.into_py(py),
+            Directive::Query(x) => x.into_py(py),
             Directive::S(x) => x.into_py(py),
         }
     }
 }
 
-fn convert_date(x: &beancount_parser::Date) -> Result<NaiveDate, PyErr> {
-    match NaiveDate::from_ymd_opt(x.year as i32, x.month as u32, x.day as u32) {
-        None => Err(ParserError::new_err(format!("Invalid date {:#?}", x))),
-        Some(date) => Ok(date),
+#[derive(Debug, Default)]
+struct ParseState<'i> {
+    // Track pushed tag count with HashMap<&str, u64> instead of only tracking
+    // tags with HashSet<&str> because the spec allows pushing multiple of the
+    // same tag, and conformance with bean-check requires an equal number of
+    // pops.
+    pushed_tags: HashMap<&'i str, u16>,
+}
+
+impl<'i> ParseState<'i> {
+    fn push_tag(&mut self, tag: &'i str) {
+        *self.pushed_tags.entry(tag).or_insert(0) += 1;
+    }
+
+    fn pop_tag(&mut self, tag: &str) -> Result<(), String> {
+        match self.pushed_tags.get_mut(tag) {
+            Some(count) => {
+                if *count <= 1 {
+                    self.pushed_tags.remove(tag);
+                } else {
+                    *count -= 1;
+                }
+                Ok(())
+            }
+            _ => Err(format!("Attempting to pop absent tag: '{}'", tag)),
+        }
+    }
+
+    fn get_pushed_tags(&self) -> impl Iterator<Item = &&str> {
+        self.pushed_tags.keys()
     }
 }
 
-fn convert_metadata(x: &beancount_parser::Directive<Decimal>) -> data::Metadata {
-    let mut h: data::Metadata = x
-        .metadata
-        .iter()
-        .map(|entry| {
-            (
-                entry.0.to_string(),
-                match entry.1 {
-                    Value::String(s) => s.to_string(),
-                    Value::Number(s) => s.to_string(),
-                    Value::Currency(s) => s.to_string(),
-                    _ => format!("{:?}", entry.1).to_string(),
-                },
-            )
-        })
-        .collect();
-
-    h.insert("lineno".to_string(), x.line_number.to_string());
-
-    return h;
+fn extract_tag<'i>(pair: Pair<'i, Rule>) -> ParseResult<&'i str> {
+    let mut pairs = pair.into_inner();
+    let pair = pairs
+        .next()
+        .ok_or_else(|| ParseError::invalid_state("tag"))?;
+    Ok(&pair.as_str()[1..])
 }
 
-fn convert(x: beancount_parser::Directive<rust_decimal::Decimal>) -> Result<Directive, PyErr> {
-    let date = convert_date(&x.date)?;
-    return match x.content {
-        DirectiveContent::Open(ref v) => {
-            Ok(Directive::Open(data::Open {
-                meta: convert_metadata(&x),
-                date,
-                account: v.account.to_string(),
-                currencies: v.currencies.iter().map(|x| x.to_string()).collect(),
-                booking: None,
-                // booking: v.booking_method,
-            }))
-        }
+#[pyfunction(name = "parse")]
+pub fn py_parse(content: &str) -> PyResult<File> {
+    return parse(content).or_else(|err| Err(ParserError::new_err(format!("{:#?}", err))));
+}
 
-        DirectiveContent::Close(ref v) => Ok(Directive::Close(data::Close {
-            meta: convert_metadata(&x),
-            date,
-            account: v.account.to_string(),
-        })),
+pub fn parse(content: &str) -> ParseResult<File> {
+    let entries = MyParser::parse(Rule::file, content)?
+        .next()
+        .ok_or_else(|| ParseError::invalid_state("non-empty parse result"))?;
 
-        DirectiveContent::Commodity(ref v) => Ok(Directive::Commodity(data::Commodity {
-            meta: convert_metadata(&x),
-            date,
-            currency: v.to_string(),
-        })),
-
-        DirectiveContent::Pad(ref v) => Ok(Directive::Pad(data::Pad {
-            meta: convert_metadata(&x),
-            date,
-            account: v.account.to_string(),
-            source_account: v.source_account.to_string(),
-        })),
-
-        DirectiveContent::Price(ref v) => Ok(Directive::Price(data::Price {
-            meta: convert_metadata(&x),
-            date,
-            currency: v.currency.to_string(),
-            amount: Amount {
-                number: v.amount.value,
-                currency: v.amount.currency.to_string(),
-            },
-        })),
-
-        DirectiveContent::Balance(ref v) => Ok(Directive::Balance(data::Balance {
-            meta: convert_metadata(&x),
-            date,
-            tolerance: v.tolerance.map(|x| x.into()),
-            diff_amount: None,
-            account: v.account.to_string(),
-            amount: Amount::from(&v.amount),
-        })),
-        DirectiveContent::Event(ref v) => Ok(Directive::Event(data::Event {
-            meta: convert_metadata(&x),
-            date,
-            typ: v.name.clone(),
-            description: v.value.clone(),
-        })),
-        DirectiveContent::Transaction(ref v) => Ok(Directive::Transaction(data::Transaction {
-            meta: convert_metadata(&x),
-            date,
-            flag: v.flag.unwrap_or('*'),
-            payee: v.payee.clone(),
-            narration: v.narration.clone().unwrap_or("".to_string()),
-            tags: v.tags.iter().map(|x| x.to_string()).collect(),
-            links: v.links.iter().map(|x| x.to_string()).collect(),
-            postings: v
-                .postings
-                .iter()
-                .map(|x| x.try_into())
-                .collect::<Result<Vec<_>, PyErr>>()?,
-        })),
-
-        _ => Ok(Directive::S("Unspported".to_string())),
+    let mut state = ParseState {
+        // root_names: ["Assets", "Liabilities", "Equity", "Income", "Expenses"]
+        //     .iter()
+        //     .map(|ty| (ty.to_string(), ty.to_string()))
+        //     .collect(),
+        pushed_tags: HashMap::new(),
     };
+
+    let mut directives = Vec::new();
+
+    let mut includes = Vec::new();
+
+    for entry in entries.into_inner() {
+        match entry.as_rule() {
+            Rule::EOI => {
+                let pushed_tags = state
+                    .get_pushed_tags()
+                    .map(|s| format!("'{}'", s))
+                    .collect::<Vec<String>>()
+                    .join(", ");
+                if !pushed_tags.is_empty() {
+                    return Err(ParseError::invalid_input_with_span(
+                        format!("Unbalanced pushed tag(s): {}", pushed_tags),
+                        entry.as_span(),
+                    ));
+                }
+                break;
+            }
+            Rule::pushtag => {
+                state.push_tag(extract_tag(entry)?);
+            }
+            Rule::poptag => {
+                let span = entry.as_span();
+                if let Err(msg) = state.pop_tag(extract_tag(entry)?) {
+                    return Err(ParseError::invalid_input_with_span(msg, span));
+                }
+            }
+            Rule::include => {
+                includes.push(get_quoted_str(entry.into_inner().next().unwrap())?);
+            }
+            _ => {
+                let dir = directive(entry, &state)?;
+
+                directives.push(dir);
+            }
+        }
+    }
+
+    return Ok(File {
+        includes,
+        options: vec![],
+        directives,
+    });
 }
 
-#[pyfunction]
-pub fn parse(content: &str) -> PyResult<File> {
-    let result = content.parse::<BeancountFile<rust_decimal::Decimal>>();
-    return match result {
-        Ok(bean) => {
-            let mut directives = Vec::with_capacity(bean.directives.len());
+fn directive(directive: Pair<Rule>, state: &ParseState) -> ParseResult<Directive> {
+    let dir = match directive.as_rule() {
+        Rule::option => option_directive(directive)?,
+        Rule::plugin => plugin_directive(directive)?,
+        Rule::custom => custom_directive(directive, state)?,
+        Rule::open => open_directive(directive, state)?,
+        Rule::close => close_directive(directive, state)?,
+        Rule::commodity_directive => commodity_directive(directive, state)?,
+        Rule::note => note_directive(directive, state)?,
+        Rule::pad => pad_directive(directive, state)?,
+        Rule::query => query_directive(directive, state)?,
+        Rule::event => event_directive(directive, state)?,
+        Rule::document => document_directive(directive, state)?,
+        Rule::price => price_directive(directive, state)?,
+        // Rule::transaction => transaction_directive(directive, state)?,
+        _ => Directive::S(format!("Unsupported {:#?}", directive).into()),
+    };
+    Ok(dir)
+}
 
-            let mut errors = Vec::new();
+// 2014-05-05 * "Transfer from Savings account"
+//   Assets:MyBank:Checking            -400.00 USD
+//   ! Assets:MyBank:Savings
 
-            for x in bean.directives {
-                match convert(x) {
-                    Ok(x) => directives.push(x),
-                    Err(err) => errors.push(err),
+/*
+ 2014-10-05 * "Costco" "Shopping for birthday"
+ Liabilities:CreditCard:CapitalOne         -45.00          USD
+ Assets:AccountsReceivable:John            ((40.00/3) + 5) USD
+ Assets:AccountsReceivable:Michael         40.00/3         USD
+ Expenses:Shopping
+*/
+fn transaction_directive<'i>(
+    directive: Pair<'i, Rule>,
+    state: &ParseState,
+) -> ParseResult<Directive> {
+    let _span = directive.as_span();
+    let source = directive.as_str();
+    let mut pairs = directive.into_inner();
+
+    let date = date(pairs.next().unwrap())?;
+    let flag: char = pairs.next().unwrap().as_str().chars().nth(0).unwrap();
+
+    let pair = pairs.next().ok_or_else(|| {
+        ParseError::invalid_state_with_span(stringify!((payee, narration)), _span.clone())
+    })?;
+    let (payee, narration) = {
+        let span = pair.as_span();
+        let mut inner = pair.into_inner();
+        let first = inner
+            .next()
+            .map(get_quoted_str)
+            .transpose()?
+            .ok_or_else(|| ParseError::invalid_state_with_span("payee or narration", span))?;
+        let second = inner.next().map(get_quoted_str);
+        if let Some(second) = second {
+            (Some(first), second?)
+        } else {
+            (None, first)
+        }
+    };
+
+    let (mut tags, mut links) = match pairs.peek() {
+        Some(ref p) if p.as_rule() == Rule::tags_links => {
+            let pair = pairs.next().ok_or_else(|| {
+                ParseError::invalid_state_with_span(stringify!($field), _span.clone())
+            })?;
+            {
+                tags_links(pair)?
+            }
+        }
+        _ => (HashSet::new(), HashSet::new()),
+    };
+
+    let pair = pairs.next().ok_or_else(|| {
+        ParseError::invalid_state_with_span(stringify!((meta, postings)), _span.clone())
+    })?;
+    let (meta, postings) = {
+        let mut postings: Vec<Posting> = Vec::new();
+        let mut tx_meta = Metadata::new();
+        for p in pair.into_inner() {
+            match p.as_rule() {
+                Rule::posting => {
+                    postings.push(posting(p, state)?);
+                }
+                Rule::key_value => {
+                    let (k, v) = meta_kv_pair(p, state)?;
+                    tx_meta.insert(k.to_string(), v.to_string());
+                }
+                Rule::tag => {
+                    let tag = (&p.as_str()[1..]).into();
+                    tags.insert(tag);
+                }
+                Rule::link => {
+                    let link = (&p.as_str()[1..]).into();
+                    links.insert(link);
+                }
+                rule => {
+                    unimplemented!("rule {:?}", rule);
+                }
+            }
+        }
+        for tag in state.get_pushed_tags() {
+            tags.insert(tag.to_string());
+        }
+        (tx_meta, postings)
+    };
+
+    Ok(Directive::Transaction(Transaction {
+        date,
+        flag,
+        payee,
+        narration,
+        tags,
+        links,
+        meta,
+        postings,
+    }))
+}
+
+fn meta_kv_pair<'i>(
+    pair: Pair<'i, Rule>,
+    state: &ParseState,
+) -> ParseResult<(Cow<'i, str>, Cow<'i, str>)> {
+    debug_assert!(pair.as_rule() == Rule::key_value);
+    let span = pair.as_span();
+    let mut inner = pair.into_inner();
+    let key = inner
+        .next()
+        .ok_or_else(|| ParseError::invalid_state_with_span("metadata key", span.clone()))?
+        .as_str();
+
+    let value_pair = inner
+        .next()
+        .and_then(|p| p.into_inner().next())
+        .ok_or_else(|| ParseError::invalid_state_with_span("metadata value", span))?;
+
+    Ok((key.into(), value_pair.as_str().into()))
+}
+
+fn optional_rule<'i>(rule: Rule, pairs: &mut Pairs<'i, Rule>) -> Option<Pair<'i, Rule>> {
+    match pairs.peek() {
+        Some(ref p) if p.as_rule() == rule => pairs.next(),
+        _ => None,
+    }
+}
+
+fn flag(pair: Pair<'_, Rule>) -> ParseResult<char> {
+    Ok(pair.as_str().chars().nth(0).unwrap())
+}
+
+
+// Assets:ETrade:IVV                     -10 IVV {183.07 USD}
+// Assets:ETrade:IVV                     -10 IVV {183.07 USD} @ 197.90 USD
+// Assets:OANDA:GBPounds                 23391.81 GBP @ 1.71 USD
+// Assets:BofA:Checking                  8450.00 USD
+// Assets:AccountsReceivable
+fn posting<'i>(pair: Pair<'i, Rule>, state: &ParseState) -> ParseResult<Posting> {
+    let span = pair.as_span();
+    let mut inner = pair.into_inner();
+    let flag = optional_rule(Rule::txn_flag, &mut inner)
+        .map(flag)
+        .transpose()?;
+
+    let account = inner
+        .next()
+        .map(|p| account(p))
+        .transpose()?
+        .ok_or_else(|| ParseError::invalid_state_with_span("account", span))?;
+
+    let units = optional_rule(Rule::incomplete_amount, &mut inner)
+        .map(|x| {
+            let mut tokens = x.into_inner();
+            Ok(Amount {
+                number: num_expr(tokens.next().unwrap())?,
+                currency: tokens.next().unwrap().as_str().to_string(),
+            }) as ParseResult<Amount>
+        })
+        .transpose()?;
+
+    // let cost = optional_rule(Rule::cost_spec, &mut inner)
+    //     .map(cost_spec)
+    //     .transpose()?;
+
+    // let price_anno = optional_rule(Rule::price_annotation, &mut inner)
+    //     .map(price_annotation)
+    //     .transpose()?;
+
+    // let price = match (price_anno, units.num) {
+    //     (
+    //         Some((
+    //             true,
+    //             bc::IncompleteAmount {
+    //                 num: Some(n),
+    //                 currency,
+    //             },
+    //         )),
+    //         Some(n_units),
+    //     ) => {
+    //         let num = if n_units.is_zero() {
+    //             0.into()
+    //         } else {
+    //             n / n_units.abs()
+    //         };
+    //         Some(
+    //             bc::IncompleteAmount::builder()
+    //                 .num(Some(num))
+    //                 .currency(currency)
+    //                 .build(),
+    //         )
+    //     }
+    //     (Some((_, p)), _) => Some(p),
+    //     (None, _) => None,
+    // };
+
+    Ok(Posting {
+        account,
+        units,
+        cost: None,
+        price: None,
+        flag,
+        metadata: Metadata::new(),
+    })
+}
+
+fn tags_links<'i>(pair: Pair<'i, Rule>) -> ParseResult<(HashSet<String>, HashSet<String>)> {
+    let (mut tags, mut links) = (HashSet::new(), HashSet::new());
+    for p in pair.into_inner() {
+        match p.as_rule() {
+            Rule::tag => {
+                let tag = (&p.as_str()[1..]).into();
+                tags.insert(tag);
+            }
+            Rule::link => {
+                let link = (&p.as_str()[1..]).into();
+                links.insert(link);
+            }
+            rule => {
+                unimplemented!("rule {:?}", rule);
+            }
+        }
+    }
+    Ok((tags, links))
+}
+
+// 2014-07-09 price USD  1.08 CAD
+fn price_directive<'i>(directive: Pair<'i, Rule>, state: &ParseState) -> ParseResult<Directive> {
+    let source = directive.as_str();
+
+    let mut pairs = directive.into_inner();
+
+    Ok(Directive::Price(Price {
+        date: date(pairs.next().unwrap())?,
+        currency: pairs.next().unwrap().as_str().to_string(),
+        amount: amount(pairs.next().unwrap())?,
+        meta: Metadata::new(),
+    }))
+}
+
+fn amount<'i>(pair: Pair<'i, Rule>) -> ParseResult<Amount> {
+    debug_assert!(pair.as_rule() == Rule::amount);
+    let mut pairs = pair.into_inner();
+
+    Ok(Amount {
+        number: num_expr(pairs.next().unwrap())?,
+        currency: pairs.next().unwrap().as_str().into(),
+    })
+}
+
+fn num_expr(pair: Pair<'_, Rule>) -> ParseResult<Decimal> {
+    Decimal::try_from(pair.as_str())
+        .or_else(|e| Err(ParseError::decimal_parse_error(e, pair.as_span())))
+}
+
+fn commodity_directive<'i>(
+    directive: Pair<'i, Rule>,
+    state: &ParseState,
+) -> ParseResult<Directive> {
+    let source = directive.as_str();
+
+    let mut pairs = directive.into_inner();
+
+    Ok(Directive::Commodity(Commodity {
+        date: date(pairs.next().unwrap())?,
+        currency: get_quoted_str(pairs.next().unwrap())?,
+        meta: Metadata::new(),
+    }))
+}
+
+// YYYY-MM-DD pad Account AccountPad
+fn pad_directive<'i>(directive: Pair<'i, Rule>, state: &ParseState) -> ParseResult<Directive> {
+    let source = directive.as_str();
+    let mut pairs = directive.into_inner();
+
+    Ok(Directive::Pad(Pad {
+        date: date(pairs.next().unwrap())?,
+        meta: Metadata::new(),
+        account: account(pairs.next().unwrap())?,
+        source_account: account(pairs.next().unwrap())?,
+    }))
+}
+
+// 2014-07-09 query "france-balances" "
+//   SELECT account, sum(position) WHERE ‘trip-france-2014’ in tags"
+fn query_directive<'i>(directive: Pair<'i, Rule>, state: &ParseState) -> ParseResult<Directive> {
+    let mut pairs = directive.into_inner();
+
+    Ok(Directive::Query(Query {
+        date: date(pairs.next().unwrap())?,
+        meta: Metadata::new(),
+        name: get_quoted_str(pairs.next().unwrap())?,
+        query_string: get_quoted_str(pairs.next().unwrap())?,
+    }))
+}
+
+// 2014-07-09 event "location" "Paris, France"
+fn event_directive<'i>(directive: Pair<'i, Rule>, state: &ParseState) -> ParseResult<Directive> {
+    let source = directive.as_str();
+    let mut pairs = directive.into_inner();
+
+    Ok(Directive::Event(Event {
+        date: date(pairs.next().unwrap())?,
+        meta: Metadata::new(),
+        name: get_quoted_str(pairs.next().unwrap())?,
+        description: get_quoted_str(pairs.next().unwrap())?,
+    }))
+}
+
+// 2013-11-03 document Liabilities:CreditCard "/home/joe/stmts/apr-2014.pdf"
+fn document_directive<'i>(directive: Pair<'i, Rule>, state: &ParseState) -> ParseResult<Directive> {
+    let source = directive.as_str();
+    let mut pairs = directive.into_inner();
+    let mut doc = Document {
+        meta: Metadata::new(),
+        date: date(pairs.next().unwrap())?,
+        account: account(pairs.next().unwrap())?,
+        filename: get_quoted_str(pairs.next().unwrap())?,
+        tags: HashSet::new(),
+        link: HashSet::new(),
+    };
+
+    parse_tag_links(&mut pairs, &mut doc.tags, &mut doc.link)?;
+
+    Ok(Directive::Document(doc))
+}
+
+fn close_directive(directive: Pair<'_, Rule>, _state: &ParseState<'_>) -> ParseResult<Directive> {
+    let mut pairs = directive.into_inner();
+
+    Ok(Directive::Close(Close {
+        date: date(pairs.next().unwrap())?,
+        account: account(pairs.next().unwrap())?,
+        meta: Metadata::new(),
+    }))
+}
+
+fn option_directive<'i>(directive: Pair<'i, Rule>) -> ParseResult<Directive> {
+    let mut pairs = directive.into_inner();
+
+    let name = get_quoted_str(pairs.next().unwrap())?;
+    let value = get_quoted_str(pairs.next().unwrap())?;
+
+    Ok(Directive::Option(Opt { name, value }))
+}
+
+// 2020-02-01 note Liabilities:CreditCard:CapitalOne "你好"
+// 2013-05-18 note Assets:US:BestBank  "Blah." ^984446a67382 #something
+// 2013-05-18 note Assets:US:BestBank  "Blah." #something ^984446a67382
+fn note_directive<'i>(directive: Pair<'i, Rule>, state: &ParseState) -> ParseResult<Directive> {
+    let mut pairs = directive.into_inner();
+    let mut note = Note {
+        meta: Metadata::new(),
+        date: date(pairs.next().unwrap())?,
+        account: account(pairs.next().unwrap())?,
+        comment: get_quoted_str(pairs.next().unwrap())?,
+        tags: HashSet::new(),
+        link: HashSet::new(),
+    };
+
+    parse_tag_links(&mut pairs, &mut note.tags, &mut note.link)?;
+
+    return Ok(Directive::Note(note));
+}
+
+fn parse_tag_links(
+    directive: &mut Pairs<'_, Rule>,
+    tags: &mut HashSet<String>,
+    links: &mut HashSet<String>,
+) -> ParseResult<()> {
+    match directive.peek() {
+        Some(ref p) => {
+            if p.as_rule() != Rule::tags_links {
+                return Ok(());
+            }
+
+            for entry in p.clone().into_inner() {
+                match entry.as_rule() {
+                    Rule::link => {
+                        links.insert(entry.into_inner().next().unwrap().as_str().to_string());
+                    }
+                    Rule::tag => {
+                        tags.insert(entry.into_inner().next().unwrap().as_str().to_string());
+                    }
+                    _ => panic!("unexpected entry {:?}", entry),
                 }
             }
 
-            Ok(File {
-                includes: bean
-                    .includes
-                    .iter()
-                    .map(|x| x.to_str().unwrap().to_string())
-                    .collect(),
-                options: bean
-                    .options
-                    .iter()
-                    .map(|x| Opt {
-                        name: x.name.to_string(),
-                        value: x.value.to_string(),
-                    })
-                    .collect(),
-                directives,
-            })
+            Ok(())
         }
-        Err(err) => Err(ParserError::new_err(err.to_string())),
-    };
+        None => Ok(()),
+    }
+}
+
+fn custom_directive<'i>(directive: Pair<'i, Rule>, state: &ParseState) -> ParseResult<Directive> {
+    let source = directive.as_str();
+    let mut pairs = directive.into_inner();
+    Ok(Directive::Custom(Custom {
+        meta: Metadata::new(),
+        date: date(pairs.next().unwrap())?,
+        name: get_quoted_str(pairs.next().unwrap())?,
+        values: {
+            match pairs.peek() {
+                None => Vec::new(),
+                Some(ref p) => {
+                    if pairs.peek().unwrap().as_rule() == Rule::custom_value_list {
+                        pairs
+                            .peek()
+                            .unwrap()
+                            .into_inner()
+                            .map(|p| may_quoted_str(p))
+                            .collect::<ParseResult<Vec<_>>>()?
+                    } else {
+                        Vec::new()
+                    }
+                }
+            }
+        },
+    }))
+}
+
+fn may_quoted_str<'i>(pair: Pair<'i, Rule>) -> ParseResult<String> {
+    debug_assert!(pair.as_rule() == Rule::quoted_str || pair.as_rule() == Rule::unquoted_str);
+    if pair.as_rule() == Rule::quoted_str {
+        return get_quoted_str(pair);
+    }
+
+    return Ok(pair.as_str().into());
+}
+
+fn get_quoted_str<'i>(pair: Pair<'i, Rule>) -> ParseResult<String> {
+    debug_assert!(pair.as_rule() == Rule::quoted_str);
+    let span = pair.as_span();
+    Ok(pair
+        .into_inner()
+        .next()
+        .ok_or_else(|| ParseError::invalid_state_with_span("quoted string", span))?
+        .as_str()
+        .into())
+}
+
+fn plugin_directive<'i>(directive: Pair<'i, Rule>) -> ParseResult<Directive> {
+    let mut paris = directive.into_inner();
+
+    let name = get_quoted_str(paris.next().unwrap())?;
+    let value = paris.next().map(get_quoted_str).transpose()?;
+
+    Ok(Directive::Plugin(Plugin {
+        module: name,
+        config: value,
+    }))
+}
+
+fn date<'i>(pair: Pair<'i, Rule>) -> ParseResult<NaiveDate> {
+    let mut pairs = pair.into_inner();
+
+    let year = pairs.next().unwrap().as_str().parse().unwrap();
+    pairs.next();
+    let mon = pairs.next().unwrap().as_str().parse().unwrap();
+    pairs.next();
+    let day = pairs.next().unwrap().as_str().parse().unwrap();
+
+    Ok(NaiveDate::from_ymd_opt(year, mon, day).unwrap())
+
+    // NaiveDate::from_ymd_opt(pair.as_str()).ok_or_else(|| ParseError {
+    //     kind: ParseErrorKind::InvalidParserState {
+    //         message: "invalid date".to_string(),
+    //     },
+    //     location: pair.as_span().start_pos().line_col(),
+    //     source: pair.as_str().into(),
+    // })
+}
+
+fn open_directive<'i>(directive: Pair<'i, Rule>, state: &ParseState) -> ParseResult<Directive> {
+    let span = directive.as_span();
+
+    let mut pairs = directive.into_inner();
+
+    Ok(Directive::Open(Open {
+        meta: Metadata::new(),
+        date: date(pairs.next().unwrap())?,
+        account: account(pairs.next().unwrap())?,
+        currencies: match pairs.peek() {
+            Some(ref p) => {
+                if p.as_rule() == Rule::commodity_list {
+                    pairs
+                        .next()
+                        .ok_or_else(|| {
+                            ParseError::invalid_state_with_span(
+                                stringify!(currencies),
+                                span.clone(),
+                            )
+                        })?
+                        .into_inner()
+                        .map(|x| x.as_str().to_string())
+                        .collect()
+                } else {
+                    Vec::new()
+                }
+            }
+            None => Vec::new(),
+        },
+        booking: match pairs.peek() {
+            Some(ref p) => {
+                if p.as_rule() == Rule::quoted_str {
+                    let f = {
+                        |p: Pair<'i, _>| -> ParseResult<Option<data::Booking>> {
+                            let span = p.as_span();
+                            get_quoted_str(p)?
+                                .try_into()
+                                .map_err(|_| {
+                                    ParseError::invalid_input_with_span(
+                                        format!("unknown booking method {}", span.as_str()),
+                                        span,
+                                    )
+                                })
+                                .map(Some)
+                        }
+                    };
+                    let pair = pairs.next().ok_or_else(|| {
+                        ParseError::invalid_state_with_span(stringify!(booking), span.clone())
+                    })?;
+                    f(pair)?
+                } else {
+                    None
+                }
+            }
+            None => None,
+        },
+    }))
+}
+
+fn account<'i>(pair: Pair<'i, Rule>) -> ParseResult<String> {
+    // debug_assert!(pair.as_rule() == Rule::account);
+    // let span = pair.as_span();
+    // let mut inner = pair.into_inner();
+    // let first_pair = inner
+    //     .next()
+    //     .ok_or_else(|| ParseError::invalid_state_with_span("first part of account name", span))?;
+    let first = pair.as_str();
+    return Ok(first.into());
+    //     return Ok(state
+    //         .root_names
+    //         .iter()
+    //         .filter(|(_, ref v)| *v == first)
+    //         .map(|(k, _)| k.clone())
+    //         .next()
+    //         .ok_or_else(|| {
+    //             pest::error::Error::new_from_span(
+    //                 pest::error::ErrorVariant::CustomError {
+    //                     message: "Invalid root account".to_string(),
+    //                 },
+    //                 first_pair.as_span(),
+    //             )
+    //         })?);
 }

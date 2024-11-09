@@ -3,7 +3,7 @@ use std::fmt;
 
 use pest::Span;
 
-use super::parse2::Rule;
+use super::parser::Rule;
 
 pub type ParseResult<T> = Result<T, ParseError>;
 
@@ -198,7 +198,7 @@ impl From<pest::error::Error<Rule>> for ParseError {
                 Rule::compound_amount => "compound amount (amount with unit and total price)",
                 Rule::file => "beancount file",
             }
-                .to_string()
+            .to_string()
         });
         let location = match &err.line_col {
             pest::error::LineColLocation::Pos(ref p) => *p,

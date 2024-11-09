@@ -1,9 +1,9 @@
-use crate::decimal::Decimal;
 use crate::ParserError;
 use chrono::NaiveDate;
 use pyo3::prelude::*;
 use pyo3::types::{PyAnyMethods, PyString};
 use pyo3::{pyclass, pymethods, Bound, PyAny, PyResult};
+use rust_decimal::Decimal;
 use std::collections::{HashMap, HashSet};
 
 pub type Metadata = HashMap<String, String>;
@@ -147,41 +147,6 @@ pub struct Posting {
     #[pyo3(get)]
     pub flag: Option<char>,
 }
-fn convert_date(x: &beancount_parser::Date) -> Result<NaiveDate, PyErr> {
-    match NaiveDate::from_ymd_opt(x.year as i32, x.month as u32, x.day as u32) {
-        None => Err(ParserError::new_err(format!("Invalid date {:#?}", x))),
-        Some(date) => Ok(date),
-    }
-}
-
-impl TryFrom<&beancount_parser::Posting<Decimal>> for Posting {
-    type Error = PyErr;
-
-    fn try_from(value: &beancount_parser::Posting<Decimal>) -> Result<Self, Self::Error> {
-        let cost = match &value.cost {
-            None => None,
-            Some(c) => Some(PostingCost::Cost(Cost {
-                date: convert_date(&c.date.unwrap())?,
-                number: c.amount.clone().unwrap().value,
-                currency: c.amount.clone().unwrap().currency.to_string(),
-                label: None,
-            })),
-        };
-
-        return Ok(Posting {
-            metadata: value
-                .metadata
-                .iter()
-                .map(|entry| (entry.0.to_string(), format!("{:?}", entry.1)))
-                .collect(),
-            account: value.account.to_string(),
-            units: None,
-            cost,
-            price: None,
-            flag: value.flag,
-        });
-    }
-}
 
 #[derive(Debug, Clone)]
 pub enum PostingCost {
@@ -298,21 +263,6 @@ pub struct Amount {
     /// Currency
     #[pyo3(get)]
     pub currency: Currency,
-}
-
-// impl Into<Amount> for beancount_parser::Amount<Decimal> {
-//     fn into(&self) -> Amount {
-//         Amount::from(self)
-//     }
-// }
-
-impl From<&beancount_parser::Amount<Decimal>> for Amount {
-    fn from(value: &beancount_parser::Amount<Decimal>) -> Self {
-        Amount {
-            number: value.value,
-            currency: value.currency.to_string(),
-        }
-    }
 }
 
 #[pymethods]
@@ -461,6 +411,22 @@ impl Booking {
 //         });
 //     }
 // }
+#[pyclass(module = "beancount.__beancount")]
+#[derive(Debug, Clone)]
+pub struct Document {
+    #[pyo3(get)]
+    pub meta: Metadata,
+    #[pyo3(get)]
+    pub date: NaiveDate,
+    #[pyo3(get)]
+    pub account: String,
+    #[pyo3(get)]
+    pub filename: String,
+    #[pyo3(get)]
+    pub tags: HashSet<String>,
+    #[pyo3(get)]
+    pub link: HashSet<String>,
+}
 
 #[pyclass(module = "beancount.__beancount")]
 #[derive(Debug, Clone)]
@@ -470,7 +436,7 @@ pub struct Event {
     #[pyo3(get)]
     pub date: NaiveDate,
     #[pyo3(get)]
-    pub typ: String,
+    pub name: String,
     #[pyo3(get)]
     pub description: String,
 }
@@ -512,4 +478,43 @@ impl Custom {
             self.meta, self.date, self.name, self.values
         );
     }
+}
+
+#[pyclass(module = "beancount.__beancount")]
+#[derive(Debug, Clone)]
+pub struct Note {
+    #[pyo3(get)]
+    pub meta: Metadata,
+    #[pyo3(get)]
+    pub date: NaiveDate,
+    #[pyo3(get)]
+    pub account: String,
+    #[pyo3(get)]
+    pub comment: String,
+    #[pyo3(get)]
+    pub tags: HashSet<String>,
+    #[pyo3(get)]
+    pub link: HashSet<String>,
+}
+
+#[pymethods]
+impl Note {
+    fn __repr__(&self) -> String {
+        return format!(
+            "Note(meta={:?}, date={:?}, account={:?}, comment={:?}, tags={:?}, link={:?})",
+            self.meta, self.date, self.account, self.comment, self.tags, self.link
+        );
+    }
+}
+#[pyclass(module = "beancount.__beancount")]
+#[derive(Debug, Clone)]
+pub struct Query {
+    #[pyo3(get)]
+    pub meta: Metadata,
+    #[pyo3(get)]
+    pub date: NaiveDate,
+    #[pyo3(get)]
+    pub name: String,
+    #[pyo3(get)]
+    pub query_string: String,
 }

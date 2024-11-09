@@ -1,4 +1,4 @@
-from beancount.__beancount import Booking, parse2
+from beancount.__beancount import Booking, parse
 
 assert Booking.STRICT == Booking.STRICT, "a == a"
 assert Booking.STRICT == "STRICT", 'a == "a"'
@@ -14,22 +14,15 @@ plugin "a.b.c" "cfg"
 2020-02-01 open Assets:Bank:Test USTC
 """
 
-file = parse2(
+file = parse(
     """
-
-2014-07-09 custom "budget" "..." 1 2 3 4
+2013-05-18 note Assets:US:BestBank  "Blah." #something ^984446a67382
 """
 )
 
 (
     """
-
-
-option "title" "Ed’s Personal Ledger"
-
-2014-05-01 open Liabilities:CreditCard:CapitalOne     USD
-
-2020-02-01 note Liabilities:CreditCard:CapitalOne "你好"
+2014-07-09 custom "budget" "..." 1 2 3 4
 
 2020-02-01 open Assets:Bank:Test USTC
 
