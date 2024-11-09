@@ -1,4 +1,10 @@
-use crate::data::{Amount, Commodity, Document, Event, Pad, Posting, Price, Query, Transaction};
+//! struct constructor order matter in this file.
+//! It decide thr order to consume lexer tokens.
+//!
+use crate::data::{
+    Amount, Commodity, CostSpec, Document, Event, Pad, Posting, PostingCost, Price, Query,
+    Transaction,
+};
 use crate::parser::{MyParser, Rule};
 use pyo3::prelude::*;
 use rust_decimal::Decimal;
@@ -15,7 +21,6 @@ use pyo3::prelude::*;
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::fmt::format;
-use std::fs::Metadata;
 use std::vec;
 
 #[pyclass(frozen)]
@@ -349,6 +354,13 @@ fn flag(pair: Pair<'_, Rule>) -> ParseResult<char> {
     Ok(pair.as_str().chars().nth(0).unwrap())
 }
 
+fn amount<'i>(x: Pair<'i, Rule>) -> ParseResult<Amount> {
+    let mut tokens = x.into_inner();
+    Ok(Amount {
+        number: num_expr(tokens.next().unwrap())?,
+        currency: tokens.next().unwrap().as_str().to_string(),
+    })
+}
 
 // Assets:ETrade:IVV                     -10 IVV {183.07 USD}
 // Assets:ETrade:IVV                     -10 IVV {183.07 USD} @ 197.90 USD
@@ -369,49 +381,10 @@ fn posting<'i>(pair: Pair<'i, Rule>, state: &ParseState) -> ParseResult<Posting>
         .ok_or_else(|| ParseError::invalid_state_with_span("account", span))?;
 
     let units = optional_rule(Rule::incomplete_amount, &mut inner)
-        .map(|x| {
-            let mut tokens = x.into_inner();
-            Ok(Amount {
-                number: num_expr(tokens.next().unwrap())?,
-                currency: tokens.next().unwrap().as_str().to_string(),
-            }) as ParseResult<Amount>
-        })
+        .map(amount)
         .transpose()?;
 
-    // let cost = optional_rule(Rule::cost_spec, &mut inner)
-    //     .map(cost_spec)
-    //     .transpose()?;
-
-    // let price_anno = optional_rule(Rule::price_annotation, &mut inner)
-    //     .map(price_annotation)
-    //     .transpose()?;
-
-    // let price = match (price_anno, units.num) {
-    //     (
-    //         Some((
-    //             true,
-    //             bc::IncompleteAmount {
-    //                 num: Some(n),
-    //                 currency,
-    //             },
-    //         )),
-    //         Some(n_units),
-    //     ) => {
-    //         let num = if n_units.is_zero() {
-    //             0.into()
-    //         } else {
-    //             n / n_units.abs()
-    //         };
-    //         Some(
-    //             bc::IncompleteAmount::builder()
-    //                 .num(Some(num))
-    //                 .currency(currency)
-    //                 .build(),
-    //         )
-    //     }
-    //     (Some((_, p)), _) => Some(p),
-    //     (None, _) => None,
-    // };
+    let (cost, price) = parse_post_price(&mut inner)?;
 
     Ok(Posting {
         account,
@@ -421,6 +394,111 @@ fn posting<'i>(pair: Pair<'i, Rule>, state: &ParseState) -> ParseResult<Posting>
         flag,
         metadata: Metadata::new(),
     })
+}
+
+fn parse_post_price<'i>(
+    pair: &mut Pairs<'i, Rule>,
+) -> ParseResult<(Option<PostingCost>, Option<Amount>)> {
+    todo!();
+    // let cost = optional_rule(Rule::cost_spec, &mut inner)
+    //     .map(|x| {
+    //         let mut tokens = x.into_inner();
+    //         Ok(Amount {
+    //             number: num_expr(tokens.next().unwrap())?,
+    //             currency: tokens.next().unwrap().as_str().to_string(),
+    //         }) as ParseResult<Amount>
+    //     })
+    //     .transpose()?;
+
+    // let price_anno = optional_rule(Rule::price_annotation, &mut inner)
+    //     .map(price_annotation)
+    //     .transpose()?;
+
+    Ok((None, None))
+}
+
+// fn price_annotation<'i>(pair: Pair<'i, Rule>) -> ParseResult<(bool, bc::IncompleteAmount<'i>)> {
+//     debug_assert!(pair.as_rule() == Rule::price_annotation);
+//     let span = pair.as_span();
+//     let inner = pair
+//         .into_inner()
+//         .next()
+//         .ok_or_else(|| ParseError::invalid_state_with_span("price annotation", span.clone()))?;
+//     let is_total = inner.as_rule() == Rule::price_annotation_total;
+//     let amount = amount(
+//         inner
+//             .into_inner()
+//             .next()
+//             .ok_or_else(|| ParseError::invalid_state_with_span("incomplete amount", span))?,
+//     )?;
+//     Ok((is_total, amount))
+// }
+
+// fn cost_spec<'i>(pair: Pair<'i, Rule>) -> ParseResult<CostSpec> {
+//     debug_assert!(pair.as_rule() == Rule::cost_spec);
+//     let mut amount = (None, None, None);
+//     let mut date_ = None;
+//     let mut label = None;
+//     let mut merge = None;
+//     let span = pair.as_span();
+//     let inner = pair
+//         .into_inner()
+//         .next()
+//         .ok_or_else(|| ParseError::invalid_state_with_span("cost spec component", span))?;
+//     let typ = inner.as_rule();
+//     for p in inner.into_inner() {
+//         match p.as_rule() {
+//             Rule::date => date_ = Some(date(p)?),
+//             Rule::quoted_str => label = Some(get_quoted_str(p)?),
+//             Rule::compound_amount => {
+//                 amount = compound_amount(p)?;
+//             }
+//             Rule::asterisk => {
+//                 merge = Some(true);
+//             }
+//             _ => unimplemented!(),
+//         }
+//     }
+//     if typ == Rule::cost_spec_total {
+//         if amount.1.is_some() {
+//             panic!("Per-unit cost may not be specified using total cost");
+//         }
+//         amount = (None, amount.0, amount.2);
+//     }
+
+//     Ok(CostSpec {
+//         number_per: amount.0,
+//         number_total: amount.1,
+//         currency: amount.2.map(|s| s.into()),
+//         date: date_,
+//         label,
+//         merge,
+//     })
+// }
+
+fn compound_amount<'i>(
+    pair: Pair<'i, Rule>,
+) -> ParseResult<(Option<Decimal>, Option<Decimal>, Option<Cow<'i, str>>)> {
+    let mut number_per = None;
+    let mut number_total = None;
+    let mut currency = None;
+    for p in pair.into_inner() {
+        match p.as_rule() {
+            Rule::num_expr => {
+                let num = Some(num_expr(p)?);
+                if number_per.is_none() {
+                    number_per = num;
+                } else {
+                    number_total = num;
+                }
+            }
+            Rule::commodity => {
+                currency = Some(p.as_str().into());
+            }
+            _ => unimplemented!(),
+        }
+    }
+    Ok((number_per, number_total, currency))
 }
 
 fn tags_links<'i>(pair: Pair<'i, Rule>) -> ParseResult<(HashSet<String>, HashSet<String>)> {
@@ -455,16 +533,6 @@ fn price_directive<'i>(directive: Pair<'i, Rule>, state: &ParseState) -> ParseRe
         amount: amount(pairs.next().unwrap())?,
         meta: Metadata::new(),
     }))
-}
-
-fn amount<'i>(pair: Pair<'i, Rule>) -> ParseResult<Amount> {
-    debug_assert!(pair.as_rule() == Rule::amount);
-    let mut pairs = pair.into_inner();
-
-    Ok(Amount {
-        number: num_expr(pairs.next().unwrap())?,
-        currency: pairs.next().unwrap().as_str().into(),
-    })
 }
 
 fn num_expr(pair: Pair<'_, Rule>) -> ParseResult<Decimal> {
