@@ -51,39 +51,30 @@ pub enum Directive {
     Balance(data::Balance),
     Price(data::Price),
     Event(data::Event),
+    Plugin(data::Plugin),
     Option(Opt),
     S(String),
+    Custom(data::Custom),
 }
 
 impl IntoPy<Py<PyAny>> for Directive {
     fn into_py(self, py: Python) -> Py<PyAny> {
-        return match self {
+        match self {
             Directive::Open(x) => x.into_py(py),
             Directive::Close(x) => x.into_py(py),
             Directive::Commodity(x) => x.into_py(py),
+            Directive::Custom(x) => x.into_py(py),
+            Directive::Transaction(x) => x.into_py(py),
             Directive::Pad(x) => x.into_py(py),
             Directive::Balance(x) => x.into_py(py),
-            Directive::S(x) => x.into_py(py),
-            Directive::Transaction(x) => x.into_py(py),
             Directive::Price(x) => x.into_py(py),
             Directive::Event(x) => x.into_py(py),
+            Directive::Plugin(x) => x.into_py(py),
             Directive::Option(x) => x.into_py(py),
-        };
+            Directive::S(x) => x.into_py(py),
+        }
     }
 }
-
-// #[pymethods]
-// impl Directive {
-//     fn __repr__(&self) -> String {
-//         return format!(
-//             "Directive(date={}, content={:?}, metadata={:#?}, line_number={:?})",
-//             self.date,
-//             self.content,
-//             self.metadata,
-//             self.line_number
-//         );
-//     }
-// }
 
 fn convert_date(x: &beancount_parser::Date) -> Result<NaiveDate, PyErr> {
     match NaiveDate::from_ymd_opt(x.year as i32, x.month as u32, x.day as u32) {

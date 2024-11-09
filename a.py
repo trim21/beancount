@@ -4,14 +4,27 @@ assert Booking.STRICT == Booking.STRICT, "a == a"
 assert Booking.STRICT == "STRICT", 'a == "a"'
 assert Booking.STRICT is Booking.STRICT, "a is a"
 
+"""
+include "a.bean"
+
+option "title" "Ed’s Personal Ledger"
+
+plugin "a.b.c" "cfg"
+
+2020-02-01 open Assets:Bank:Test USTC
+"""
+
 file = parse2(
     """
-option "title" "Ed’s Personal Ledger"
+
+2014-07-09 custom "budget" "..." 1 2 3 4
 """
 )
 
 (
     """
+
+
 option "title" "Ed’s Personal Ledger"
 
 2014-05-01 open Liabilities:CreditCard:CapitalOne     USD
@@ -25,18 +38,14 @@ option "title" "Ed’s Personal Ledger"
   Expenses:Restaurant
 
 2014-06-01 pad Assets:BofA:Checking Equity:Opening-Balances
+
 """
 )
-#
-# print(file.includes)  # ['a.bean']
+print("includes", file.includes)  # ['a.bean']
 #
 # print(file.options)  # [Option(name="title", value="Ed’s Personal Ledger"]
 # # print(file.directives)  # [Option(name="title", value="Ed’s Personal Ledger"]
 #
 for d in file.directives:
-    print(d)
     print("---")
-#
-# # d0: Open = file.directives[0]
-#
-# # print(d0.__repr__())
+    print(d)

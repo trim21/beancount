@@ -3,7 +3,7 @@ use std::fmt;
 
 use pest::Span;
 
-use super::parser::Rule;
+use super::parse2::Rule;
 
 pub type ParseResult<T> = Result<T, ParseError>;
 
@@ -23,7 +23,7 @@ pub struct ParseError {
     pub kind: ParseErrorKind,
     /// The (line, column) location of the error in the input.
     pub location: (usize, usize),
-    source: Option<Box<dyn Error + 'static + Send + Sync>>,
+    pub source: Option<Box<dyn Error + 'static + Send + Sync>>,
 }
 
 impl fmt::Display for ParseError {
@@ -103,6 +103,8 @@ impl From<pest::error::Error<Rule>> for ParseError {
         let err = err.renamed_rules(|rule| {
             match *rule {
                 Rule::EOI => "end of input",
+                Rule::alpha => "alpha",
+                Rule::digit => "digit",
                 Rule::WHITESPACE => "whitespace",
                 Rule::COMMENT => "comment",
                 Rule::boolean => "boolean value",
@@ -133,6 +135,7 @@ impl From<pest::error::Error<Rule>> for ParseError {
                 Rule::amount => "amount",
                 Rule::double_quote => "double quotation mark",
                 Rule::quoted_str => "quoted string",
+                Rule::unquoted_str => "unquoted string",
                 Rule::inner_quoted_str => "inner part of a quoted string",
                 Rule::quoted_char => "a (possibly escaped) character",
                 Rule::escape_sequence => "escape sequence",
@@ -195,7 +198,7 @@ impl From<pest::error::Error<Rule>> for ParseError {
                 Rule::compound_amount => "compound amount (amount with unit and total price)",
                 Rule::file => "beancount file",
             }
-            .to_string()
+                .to_string()
         });
         let location = match &err.line_col {
             pest::error::LineColLocation::Pos(ref p) => *p,

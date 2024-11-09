@@ -1,12 +1,15 @@
+#![allow(unused_variables)]
+#![allow(dead_code)]
+#![allow(unused_imports)]
+
 use pyo3::create_exception;
 use pyo3::prelude::*;
-use std::prelude::*;
 
 mod data;
-mod error;
 mod decimal;
+mod error;
 mod parse;
-mod parser;
+mod parse2;
 
 #[pymodule]
 fn __beancount(m: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -23,8 +26,9 @@ fn __beancount(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<data::CostSpec>()?;
     m.add_class::<data::Posting>()?;
     m.add_class::<data::Transaction>()?;
+    m.add_class::<data::Plugin>()?;
     m.add_function(wrap_pyfunction!(parse::parse, m)?)?;
-    m.add_function(wrap_pyfunction!(parser::py_parse2, m)?)?;
+    m.add_function(wrap_pyfunction!(parse2::py_parse2, m)?)?;
 
     // parser::register_child_module(m)
     return Ok(());

@@ -10,7 +10,7 @@ pub type Metadata = HashMap<String, String>;
 
 pub type Currency = String;
 
-#[pyclass]
+#[pyclass(module = "beancount.__beancount")]
 #[derive(Debug, Clone)]
 pub struct Open {
     #[pyo3(get)]
@@ -43,7 +43,7 @@ impl Open {
     }
 }
 
-#[pyclass]
+#[pyclass(module = "beancount.__beancount")]
 #[derive(Debug, Clone)]
 pub struct Close {
     #[pyo3(get)]
@@ -68,7 +68,7 @@ impl Close {
     }
 }
 
-#[pyclass]
+#[pyclass(module = "beancount.__beancount")]
 #[derive(Debug, Clone)]
 pub struct Commodity {
     #[pyo3(get)]
@@ -89,7 +89,7 @@ impl Commodity {
     }
 }
 
-#[pyclass]
+#[pyclass(module = "beancount.__beancount")]
 #[derive(Debug, Clone)]
 pub struct Pad {
     #[pyo3(get)]
@@ -112,7 +112,7 @@ impl Pad {
     }
 }
 
-#[pyclass]
+#[pyclass(module = "beancount.__beancount")]
 #[derive(Debug, Clone)]
 pub struct Balance {
     #[pyo3(get)]
@@ -131,7 +131,7 @@ pub struct Balance {
 
 // #[derive(Debug, Clone)]
 // #[non_exhaustive]
-#[pyclass]
+#[pyclass(module = "beancount.__beancount")]
 #[derive(Debug, Clone)]
 pub struct Posting {
     #[pyo3(get)]
@@ -198,7 +198,7 @@ impl IntoPy<Py<PyAny>> for PostingCost {
     }
 }
 
-#[pyclass]
+#[pyclass(module = "beancount.__beancount")]
 #[derive(Debug, Clone)]
 pub struct Cost {
     #[pyo3(get)]
@@ -211,7 +211,7 @@ pub struct Cost {
     pub label: Option<String>,
 }
 
-#[pyclass]
+#[pyclass(module = "beancount.__beancount")]
 #[derive(Debug, Clone)]
 pub struct CostSpec {
     #[pyo3(get)]
@@ -228,7 +228,7 @@ pub struct CostSpec {
     pub merge: Option<bool>,
 }
 
-#[pyclass]
+#[pyclass(module = "beancount.__beancount")]
 #[derive(Debug, Clone)]
 pub struct Transaction {
     #[pyo3(get)]
@@ -289,7 +289,7 @@ impl Transaction {
 //     }
 // }
 
-#[pyclass]
+#[pyclass(module = "beancount.__beancount")]
 #[derive(Debug, Clone, PartialEq)]
 pub struct Amount {
     /// The value (decimal) part
@@ -326,7 +326,7 @@ impl Amount {
     }
 }
 
-#[pyclass]
+#[pyclass(module = "beancount.__beancount")]
 #[derive(Debug, Clone)]
 pub struct Price {
     #[pyo3(get)]
@@ -364,6 +364,45 @@ pub enum Booking {
     FIFO,
     LIFO,
     HIFO,
+}
+impl TryFrom<String> for Booking {
+    type Error = PyErr;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        match value.as_str() {
+            "STRICT" => Ok(Booking::STRICT),
+            "STRICT_WITH_SIZE" => Ok(Booking::STRICT_WITH_SIZE),
+            "None" => Ok(Booking::None),
+            "AVERAGE" => Ok(Booking::AVERAGE),
+            "FIFO" => Ok(Booking::FIFO),
+            "LIFO" => Ok(Booking::LIFO),
+            "HIFO" => Ok(Booking::HIFO),
+            _ => Err(ParserError::new_err(format!(
+                "Invalid booking type: {}",
+                value
+            ))),
+        }
+    }
+}
+
+impl TryFrom<&str> for Booking {
+    type Error = PyErr;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        match value {
+            "STRICT" => Ok(Booking::STRICT),
+            "STRICT_WITH_SIZE" => Ok(Booking::STRICT_WITH_SIZE),
+            "None" => Ok(Booking::None),
+            "AVERAGE" => Ok(Booking::AVERAGE),
+            "FIFO" => Ok(Booking::FIFO),
+            "LIFO" => Ok(Booking::LIFO),
+            "HIFO" => Ok(Booking::HIFO),
+            _ => Err(ParserError::new_err(format!(
+                "Invalid booking type: {}",
+                value
+            ))),
+        }
+    }
 }
 
 #[pymethods]
@@ -423,7 +462,7 @@ impl Booking {
 //     }
 // }
 
-#[pyclass]
+#[pyclass(module = "beancount.__beancount")]
 #[derive(Debug, Clone)]
 pub struct Event {
     #[pyo3(get)]
@@ -434,4 +473,43 @@ pub struct Event {
     pub typ: String,
     #[pyo3(get)]
     pub description: String,
+}
+
+#[pyclass(module = "beancount.__beancount")]
+#[derive(Debug, Clone)]
+pub struct Plugin {
+    #[pyo3(get)]
+    pub module: String,
+    #[pyo3(get)]
+    pub config: Option<String>,
+}
+
+#[pymethods]
+impl Plugin {
+    // fn __repr__(&self) -> String {
+    // return format!("Plugin(module={:?}, config={:?})", self.module, self.config);
+    // }
+}
+
+#[pyclass(module = "beancount.__beancount")]
+#[derive(Debug, Clone)]
+pub struct Custom {
+    #[pyo3(get)]
+    pub meta: Metadata,
+    #[pyo3(get)]
+    pub date: NaiveDate,
+    #[pyo3(get)]
+    pub name: String,
+    #[pyo3(get)]
+    pub values: Vec<String>,
+}
+
+#[pymethods]
+impl Custom {
+    fn __repr__(&self) -> String {
+        return format!(
+            "Custom(meta={:?}, date={:?}, name={:?}, values={:?})",
+            self.meta, self.date, self.name, self.values
+        );
+    }
 }

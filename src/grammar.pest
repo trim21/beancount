@@ -2,6 +2,9 @@
 WHITESPACE = _ { " " | "\t" }
 COMMENT = _{ ";" ~ (!NEWLINE ~ ANY)* }
 
+alpha = { 'a'..'z' | 'A'..'Z' }
+digit = { '0'..'9' }
+
 boolean = @{ ^"true" | ^"false" }
 indent = _{ WHITESPACE+ }
 eol = _{ NEWLINE }
@@ -37,6 +40,9 @@ amount = { num_expr ~ commodity }
 double_quote = _{ "\"" }
 quoted_str = ${ double_quote ~ inner_quoted_str ~ double_quote }
 inner_quoted_str = @{ quoted_char* }
+
+unquoted_str = ${ !(WHITESPACE | eol) ~ ANY }
+
 quoted_char = @{ escape_sequence | ( !"\"" ~ ANY ) }
 escape_sequence = @{ "\\" ~ ANY }
 valid_non_letter_commodity_char = @{ "'" |  "_" | "-" | "." }
@@ -69,7 +75,7 @@ close = { date ~ "close" ~ account ~ eol_kv_list }
 commodity_directive = { date ~ "commodity" ~ commodity ~ eol_kv_list }
 
 // 2014-07-09 custom "budget" "some_config_opt_for_custom_directive" TRUE 45.30 USD
-custom_value = _{ quoted_str | date | boolean | amount | num_expr | account }
+custom_value = _{ quoted_str | unquoted_str }
 custom_value_list = { custom_value+ }
 custom = { date ~ "custom" ~ quoted_str ~ custom_value_list? ~ eol_kv_list }
 
