@@ -17,6 +17,7 @@ import textwrap
 import unittest
 
 from os import path
+from pathlib import Path
 
 import click.testing
 
@@ -187,11 +188,11 @@ def docfile(function, **kwargs):
         allowed = ("buffering", "encoding", "newline", "dir", "prefix", "suffix")
         if any(key not in allowed for key in kwargs):
             raise ValueError("Invalid kwarg to docfile_extra")
-        with tempfile.NamedTemporaryFile("w", **kwargs) as file:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_file_path = Path(temp_dir, "temp.txt")
             text = contents or function.__doc__
-            file.write(textwrap.dedent(text))
-            file.flush()
-            return function(self, file.name)
+            temp_file_path.write_text(textwrap.dedent(text), encoding="utf-8")
+            return function(self, str(temp_file_path))
 
     new_function.__doc__ = None
     return new_function

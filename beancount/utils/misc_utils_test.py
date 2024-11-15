@@ -236,7 +236,7 @@ class TestMiscUtils(unittest.TestCase):
     def test_escape_string(self):
         assert (
             misc_utils.escape_string('Entry with escaped "symbols" \\ \r \n')
-            == 'Entry with escaped \\"symbols\\" \\\\ \r \n'
+            == 'Entry with escaped \\"symbols\\" \\\\ \\r \\n'
         )
 
 

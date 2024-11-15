@@ -5,6 +5,7 @@ Generic utility packages and functions.
 __copyright__ = "Copyright (C) 2014-2017  Martin Blais"
 __license__ = "GNU GPLv2"
 
+import json
 from collections import defaultdict
 from time import time
 import collections
@@ -281,15 +282,15 @@ def compute_unique_clean_ids(strings):
     return idmap
 
 
-def escape_string(string):
-    """Escape quotes and backslashes in payee and narration.
+def escape_string(string: str) -> str:
+    """Escape backslashes, double quotes, and control characters.
 
     Args:
       string: Any string.
     Returns.
       The input string, with offending characters replaced.
     """
-    return string.replace("\\", r"\\").replace('"', r"\"")
+    return json.dumps(string, ensure_ascii=False)[1:-1]
 
 
 def idify(string):

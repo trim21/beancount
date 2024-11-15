@@ -10,6 +10,7 @@ import unittest
 import tempfile
 import textwrap
 import sys
+from pathlib import Path
 
 from beancount.core.number import D
 from beancount.core import data
@@ -82,18 +83,19 @@ class TestParserInputs(unittest.TestCase):
         self.assertEqual(0, len(errors))
 
     def test_parse_filename(self):
-        with tempfile.NamedTemporaryFile("w", suffix=".beancount") as file:
-            file.write(self.INPUT)
-            file.flush()
-            entries, errors, _ = parser.parse_file(file.name)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_file_path = Path(temp_dir, "temp.beancount")
+            temp_file_path.write_bytes(self.INPUT.encode("utf-8"))
+            entries, errors, _ = parser.parse_file(str(temp_file_path))
             self.assertEqual(1, len(entries))
             self.assertEqual(0, len(errors))
 
     def test_parse_file(self):
-        with tempfile.TemporaryFile("w+b", suffix=".beancount") as file:
-            file.write(self.INPUT.encode("utf-8"))
-            file.seek(0)
-            entries, errors, _ = parser.parse_file(file)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_file_path = Path(temp_dir, "temp.beancount")
+            temp_file_path.write_bytes(self.INPUT.encode("utf-8"))
+            with temp_file_path.open("rb") as f:
+                entries, errors, _ = parser.parse_file(f)
             self.assertEqual(1, len(entries))
             self.assertEqual(0, len(errors))
 
