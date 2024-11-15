@@ -15,6 +15,7 @@ from pathlib import Path
 from beancount.core.number import D
 from beancount.core import data
 from beancount.parser import parser, _parser, lexer, grammar
+from beancount.loader import load_string
 
 
 class TestCompareTestFunctions(unittest.TestCase):
@@ -66,6 +67,16 @@ class TestParserDoc(unittest.TestCase):
           Expenses:Restaurant         100 USD
           Assets:US:Cash             -100 USD
         """
+
+    @unittest.skipIf(sys.platform != "win32", reason="test for win32 file separator")
+    def test_win32_filename(self):
+        """filepath in document are expected to be escaped"""
+        row = r'2014-06-08 document Assets:Account1 "D:\\a\beancount\beancount\path\to\document.csv"'
+
+        self.assertEqual(
+            load_string(row)[0][0].filename,
+            "D:\\a\x08eancount\x08eancountpath\todocument.csv",
+        )
 
 
 class TestParserInputs(unittest.TestCase):
