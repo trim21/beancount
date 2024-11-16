@@ -3,16 +3,19 @@ __license__ = "GNU GPLv2"
 
 import os
 import re
+import sys
 import textwrap
 import tempfile
 import unittest
 
 from os import path
+from pathlib import Path
 
 from beancount.parser import cmptest
 from beancount.utils import test_utils
 from beancount.scripts.doctor import doctor
 from beancount.scripts import directories_test
+from beancount.utils.misc_utils import escape_string
 
 
 class TestScriptDoctor(test_utils.ClickTestCase):
@@ -79,6 +82,7 @@ class TestScriptDoctor(test_utils.ClickTestCase):
 class TestScriptCheckDirectories(
     directories_test.TestScriptCheckDirectories, test_utils.ClickTestCase
 ):
+    @unittest.skipIf(sys.platform == "win32", "path sep")
     @test_utils.docfile
     def test_invocation(self, filename):
         """
@@ -205,17 +209,17 @@ class TestContext(cmptest.TestCase, test_utils.ClickTestCase):
           Assets:Cash
         """
 
-        with tempfile.NamedTemporaryFile("w") as topfile:
-            topfile.write(
+        with tempfile.TemporaryDirectory("w") as tmpdir:
+            topfile = Path(tmpdir, "a.bean")
+            topfile.write_text(
                 textwrap.dedent(
                     """
                 include "{}"
-            """.format(filename)
+            """.format(escape_string(filename))
                 )
             )
-            topfile.flush()
             rv = self.run_with_args(
-                doctor, "context", topfile.name, "{}:6".format(filename)
+                doctor, "context", str(topfile), "{}:6".format(filename)
             )
             self.assertRegex(rv.stdout, "Location:")
             self.assertRegex(rv.stdout, "50.02")
@@ -242,6 +246,7 @@ class TestLinked(cmptest.TestCase, test_utils.ClickTestCase):
           Assets:Cash
     """
 
+    @unittest.skipIf(sys.platform == "win32", "posix fs")
     @test_utils.docfile_extra(contents=test_string)
     def test_linked_lineno_only(self, filename):
         rv = self.run_with_args(doctor, "linked", filename, "6")
@@ -251,6 +256,7 @@ class TestLinked(cmptest.TestCase, test_utils.ClickTestCase):
             2, len(list(re.finditer(r"/(tmp|var/folders)/.*:\d+:", rv.stdout)))
         )
 
+    @unittest.skipIf(sys.platform == "win32", "posix fs")
     @test_utils.docfile_extra(contents=test_string)
     def test_linked_multiple_files(self, filename):
         with tempfile.NamedTemporaryFile("w") as topfile:
@@ -269,6 +275,7 @@ class TestLinked(cmptest.TestCase, test_utils.ClickTestCase):
                 2, len(list(re.finditer(r"/(tmp|var/folders)/.*:\d+:", rv.stdout)))
             )
 
+    @unittest.skipIf(sys.platform == "win32", "path sep")
     @test_utils.docfile_extra(contents=test_string)
     def test_linked_explicit_link(self, filename):
         rv = self.run_with_args(doctor, "linked", filename, "^abc")

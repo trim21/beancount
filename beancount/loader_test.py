@@ -8,12 +8,14 @@ import unittest
 import tempfile
 import textwrap
 import os
+from pathlib import Path
 from unittest import mock
 from os import path
 
 from beancount import loader
 from beancount.parser import parser
 from beancount.utils import test_utils
+from beancount.utils.misc_utils import escape_string
 
 
 TEST_INPUT = """
@@ -111,16 +113,16 @@ class TestLoader(unittest.TestCase):
 
     def test_load(self):
         with test_utils.capture():
-            with tempfile.NamedTemporaryFile("w") as tmpfile:
-                tmpfile.write(TEST_INPUT)
-                tmpfile.flush()
-                entries, errors, options_map = loader.load_file(tmpfile.name)
+            with tempfile.TemporaryDirectory(prefix="beancount") as tmpdir:
+                tmpfile = Path(tmpdir, "test.bean")
+                tmpfile.write_text(TEST_INPUT)
+                entries, errors, options_map = loader.load_file(tmpfile)
                 self.assertTrue(isinstance(entries, list))
                 self.assertTrue(isinstance(errors, list))
                 self.assertTrue(isinstance(options_map, dict))
 
                 entries, errors, options_map = loader.load_file(
-                    tmpfile.name, log_timings=logging.info
+                    tmpfile, log_timings=logging.info
                 )
                 self.assertTrue(isinstance(entries, list))
                 self.assertTrue(isinstance(errors, list))
@@ -260,7 +262,7 @@ class TestLoadIncludes(unittest.TestCase):
     def test_load_file_with_absolute_include(self):
         with test_utils.tempdir() as tmp:
             test_utils.create_temporary_files(
-                tmp,
+                escape_string(tmp),
                 {
                     "apples.beancount": """
                   include "{root}/fruits/oranges.beancount"
@@ -309,7 +311,7 @@ class TestLoadIncludes(unittest.TestCase):
         # Including recursive includes and mixed and absolute.
         with test_utils.tempdir() as tmp:
             test_utils.create_temporary_files(
-                tmp,
+                escape_string(tmp),
                 {
                     "apples.beancount": """
                   include "fruits/oranges.beancount"

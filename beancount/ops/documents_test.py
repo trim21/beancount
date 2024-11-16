@@ -6,6 +6,7 @@ __copyright__ = "Copyright (C) 2014-2016  Martin Blais"
 __license__ = "GNU GPLv2"
 
 import datetime
+import sys
 import textwrap
 import unittest
 from os import path
@@ -28,6 +29,7 @@ class TestDocuments(test_utils.TmpFilesTestBase, cmptest.TestCase):
         "root/Liabilities/US/Bank/",  # Empty directory.
     ]
 
+    @unittest.skipIf(sys.platform == "win32", "path sep")
     def test_process_documents(self):
         input_filename = path.join(self.root, "input.beancount")
         with open(input_filename, "w") as f:
@@ -70,6 +72,7 @@ class TestDocuments(test_utils.TmpFilesTestBase, cmptest.TestCase):
 
         self.assertEqual(0, len(errors))
 
+    @unittest.skipIf(sys.platform == "win32", "path sep")
     def test_process_documents_trailing_slash(self):
         input_filename = path.join(self.root, "input.beancount")
         with open(input_filename, "w") as f:
@@ -89,6 +92,7 @@ class TestDocuments(test_utils.TmpFilesTestBase, cmptest.TestCase):
         doc_entries = [entry for entry in entries if isinstance(entry, data.Document)]
         self.assertEqual(1, len(doc_entries))
 
+    @unittest.skipIf(sys.platform == "win32", "path sep")
     def test_verify_document_files_exist(self):
         entries, _, options_map = loader.load_string(
             textwrap.dedent("""
@@ -106,6 +110,7 @@ class TestDocuments(test_utils.TmpFilesTestBase, cmptest.TestCase):
             document_error.entry.filename.endswith("2014-07-10.something-else.pdf")
         )
 
+    @unittest.skipIf(sys.platform == "win32", "path sep")
     def test_find_documents(self):
         # Test with an absolute directory name.
         entries1, errors1 = documents.find_documents(self.root, "/tmp/input.beancount")

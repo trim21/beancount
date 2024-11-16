@@ -1,6 +1,7 @@
 __copyright__ = "Copyright (C) 2014, 2016  Martin Blais"
 __license__ = "GNU GPLv2"
 
+import sys
 import unittest
 import datetime
 
@@ -29,6 +30,7 @@ class TestDateUtils(unittest.TestCase):
             datetime.date(2016, 1, 1), date_utils.next_month(datetime.date(2015, 12, 15))
         )
 
+    @unittest.skipIf(sys.platform == "win32", "not supported on Windows")
     def test_intimezone(self):
         with date_utils.intimezone("America/New_York"):
             now_nyc = datetime.datetime.now()

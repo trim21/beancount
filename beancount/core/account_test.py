@@ -1,6 +1,7 @@
 __copyright__ = "Copyright (C) 2014-2016  Martin Blais"
 __license__ = "GNU GPLv2"
 
+import sys
 import unittest
 import types
 
@@ -125,6 +126,7 @@ class TestWalk(test_utils.TmpFilesTestBase):
         "root/Assets/Cäsh/2023-08-18.test.pdf",  # Unicode directory name.
     ]
 
+    @unittest.skipIf(sys.platform == "win32", "path sep")
     def test_walk(self):
         actual_data = [
             (root[len(self.root) :], account_, dirs, files)

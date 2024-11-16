@@ -3,6 +3,7 @@
 __copyright__ = "Copyright (C) 2014, 2016  Martin Blais"
 __license__ = "GNU GPLv2"
 
+import sys
 from os import path
 import os
 import re
@@ -35,6 +36,7 @@ class TestFileUtilsFind(test_utils.TestTempdirMixin, test_utils.TestCase):
             else:
                 open(abs_filename, "w").close()
 
+    @unittest.skipIf(sys.platform == "win32", "posix fs")
     def test_find_files(self):
         def walk(fords):
             return sorted(clean(self.tempdir, file_utils.find_files(fords)))
@@ -71,6 +73,7 @@ class TestMiscFileUtils(unittest.TestCase):
         self.assertEqual("html", file_utils.guess_file_format("/user/output.xhtml"))
         self.assertEqual(None, file_utils.guess_file_format("/user/output"))
 
+    @unittest.skipIf(sys.platform == "win32", "path sep")
     def test_path_greedy_split(self):
         self.assertEqual(
             ("/tmp/tmp.ju3h4h/blabla", None),

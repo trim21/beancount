@@ -1,6 +1,7 @@
 __copyright__ = "Copyright (C) 2014, 2016-2017  Martin Blais"
 __license__ = "GNU GPLv2"
 
+import sys
 import tempfile
 import unittest
 import os
@@ -28,6 +29,7 @@ class TestScriptCheckDirectories(unittest.TestCase):
         "Expenses/notes/Fun",  # Legal extra in the middle.
     ]
 
+    @unittest.skipIf(sys.platform == "win32", "path sep")
     def test_validation(self):
         for directory in self.TEST_DIRECTORIES:
             os.makedirs(path.join(self.tmpdir, directory))

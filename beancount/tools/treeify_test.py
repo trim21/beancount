@@ -4,6 +4,7 @@ __copyright__ = "Copyright (C) 2014-2017  Martin Blais"
 __license__ = "GNU GPLv2"
 
 import subprocess
+import sys
 import unittest
 import textwrap
 
@@ -22,7 +23,7 @@ def treeify(string, options=None):
       The treeified string.
     """
     pipe = subprocess.Popen(
-        [PROGRAM] + (options or []),
+        [sys.executable, PROGRAM] + (options or []),
         shell=False,
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
@@ -39,7 +40,7 @@ def treeify(string, options=None):
 class TestTreeifyBase(unittest.TestCase):
     maxDiff = 8192
 
-    def treeify(self, string, expect_errors=False, options=None):
+    def treeify(self, string, expect_errors=False, options=None) -> str:
         """Run treeify on the given string and assert no errors.
 
         Args:
@@ -82,7 +83,7 @@ class TestTreeifyBase(unittest.TestCase):
             print("-(expected)-------------------------------")
             print(expected)
             print("------------------------------------------")
-        self.assertEqual(expected, output)
+        self.assertEqual(expected.splitlines(), output.splitlines())
         return output
 
 

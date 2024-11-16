@@ -2,10 +2,12 @@ __copyright__ = "Copyright (C) 2015-2016  Martin Blais"
 __license__ = "GNU GPLv2"
 
 import os
+import sys
 import unittest
 import subprocess
 import tempfile
 from os import path
+from pathlib import Path
 
 from beancount import loader
 from beancount.utils import encryption
@@ -71,7 +73,6 @@ lWxYEpHP0bGe/YeiDUzYkJZLy41Dm3I/48mdpGPQ36xQzRXQJrcv2cTBcNY=
 -----END PGP PRIVATE KEY BLOCK-----
 """
 
-
 INPUT = """\
 ;; -*- mode: beancount -*-
 
@@ -103,6 +104,8 @@ class TestEncryptedBase(unittest.TestCase):
             pass  # Ignore those, GPG agent sometimes causes this problem.
 
     def run_gpg(self, *args, **kw):
+        if sys.platform == "win32":
+            raise unittest.SkipTest("windows doesn't have gpg natively")
         command = (
             "gpg",
             "--batch",
@@ -155,26 +158,21 @@ class TestEncryptedFiles(TestEncryptedBase):
 
 class TestEncryptedFilesCheck(unittest.TestCase):
     def test_is_encrypted_file(self):
-        with tempfile.NamedTemporaryFile(suffix=".txt") as file:
-            file.write(b"\n")
-            file.flush()
-            self.assertFalse(encryption.is_encrypted_file(file.name))
+        with tempfile.TemporaryDirectory(prefix="beancount.") as tmpdir:
+            txt = Path(tmpdir).joinpath("a.txt")
+            txt.write_bytes(b"\n")
+            self.assertFalse(encryption.is_encrypted_file(txt))
 
-        with tempfile.NamedTemporaryFile(suffix=".gpg") as file:
-            file.flush()
-            self.assertTrue(encryption.is_encrypted_file(file.name))
+            gpg = Path(tmpdir).joinpath("a.gpg")
+            gpg.touch()
+            self.assertTrue(encryption.is_encrypted_file(gpg))
 
-        with tempfile.NamedTemporaryFile(suffix=".asc") as file:
-            file.write(b"Anything else\n")
-            file.flush()
-            self.assertFalse(encryption.is_encrypted_file(file.name))
+            asc = Path(tmpdir).joinpath("a.asc")
+            asc.write_bytes(b"Anything else\n")
+            self.assertFalse(encryption.is_encrypted_file(asc))
 
-        with tempfile.NamedTemporaryFile(suffix=".asc") as file:
-            file.write(b"\n\n\n")
-            file.write(b"-----BEGIN PGP MESSAGE-----\n")
-            file.write(b"\n\n\n")
-            file.flush()
-            self.assertTrue(encryption.is_encrypted_file(file.name))
+            asc.write_bytes(b"\n\n\n" + b"-----BEGIN PGP MESSAGE-----\n" + b"\n\n\n")
+            self.assertTrue(encryption.is_encrypted_file(asc))
 
 
 class TestLoadIncludesEncrypted(TestEncryptedBase):
