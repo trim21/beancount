@@ -5,6 +5,7 @@
 *.pyd
 taskfile.yaml
 *.so
+*.pyd
 *.swp
 *~
 .cache
