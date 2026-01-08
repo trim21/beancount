@@ -13,7 +13,6 @@ jobs:
         with:
           python-version: '3.13'
       - uses: astral-sh/setup-uv@v5
-      - run: pip install ruff
       - run: make lint
 
   pre-commit:
