@@ -36,6 +36,8 @@ mod transaction;
 
 pub type StrictError = crate::ParseError;
 
+const MAX_DISPLAYED_EXPECTED: usize = 5;
+
 fn skipped_line_parser<'src>()
 -> impl Parser<'src, &'src str, Option<ast::Directive<'src>>, Error<'src>> {
   choice((
@@ -104,14 +106,18 @@ fn summarize_expected<'a>(
     return None;
   }
 
-  // Limit the number of expected tokens we surface (five) to keep messages concise.
-  const MAX_EXPECTED: usize = 5;
-  if items.len() <= MAX_EXPECTED {
+  // Limit the number of expected tokens we surface to keep messages concise.
+  if items.len() <= MAX_DISPLAYED_EXPECTED {
     Some(join_list(&items))
   } else {
-    let remaining = items.len() - MAX_EXPECTED;
-    let head = join_list(&items[..MAX_EXPECTED]);
-    Some(format!("{head}, and {remaining} more"))
+    let remaining = items.len() - MAX_DISPLAYED_EXPECTED;
+    let head = join_list(&items[..MAX_DISPLAYED_EXPECTED]);
+    let suffix = if remaining == 1 {
+      "1 more".to_string()
+    } else {
+      format!("{remaining} more")
+    };
+    Some(format!("{head}, and {suffix}"))
   }
 }
 
