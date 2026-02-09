@@ -34,8 +34,10 @@ mod query;
 mod raw;
 mod transaction;
 
+/// Structured parse error with line/column information returned by `parse_strict`.
 pub type StrictError = crate::ParseError;
 
+/// Cap the number of expected tokens shown in a strict-mode error summary to keep messages readable.
 const MAX_DISPLAYED_EXPECTED: usize = 5;
 
 fn skipped_line_parser<'src>()
