@@ -59,7 +59,7 @@ fn describe_pattern(expected: chumsky::error::RichPattern<'_, char>) -> String {
     RichPattern::Any => "any character".to_string(),
     RichPattern::SomethingElse => "something else".to_string(),
     RichPattern::EndOfInput => "end of input".to_string(),
-    _ => "input".to_string(),
+    other => other.to_string(),
   }
 }
 
