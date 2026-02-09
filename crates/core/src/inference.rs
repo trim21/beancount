@@ -2,7 +2,6 @@ use std::collections::HashMap;
 
 use rust_decimal::Decimal;
 
-use crate::ParseError;
 use crate::core::{
   Amount, CostAmount, CostSpec, Directive, NumberExpr, Transaction, number_expr_to_decimal,
 };
@@ -48,14 +47,6 @@ impl InferenceError {
       line: meta.line,
       column: meta.column,
       message,
-    }
-  }
-
-  pub fn into_parse_error(self) -> ParseError {
-    ParseError {
-      line: self.line,
-      column: self.column,
-      message: self.message,
     }
   }
 }
@@ -241,21 +232,15 @@ fn resolve_price(
 /// For each currency within a transaction, if exactly one posting amount is missing
 /// we balance that currency by assigning the opposite of the running total.
 /// If multiple postings are missing for the same currency or the transaction cannot
-/// balance, a `ParseError` is returned.
+/// balance, an `InferenceError` is returned.
 pub fn infer_directives(
-  directives: Vec<Directive>,
-) -> Result<Vec<InferredDirective>, ParseError> {
-  infer_directives_detailed(directives).map_err(InferenceError::into_parse_error)
-}
-
-pub fn infer_directives_detailed(
   directives: Vec<Directive>,
 ) -> Result<Vec<InferredDirective>, InferenceError> {
   directives
     .into_iter()
     .map(|directive| match directive {
       Directive::Transaction(txn) => {
-        infer_transaction_postings_detailed(txn).map(InferredDirective::Transaction)
+        infer_transaction_postings(txn).map(InferredDirective::Transaction)
       }
       other => Ok(InferredDirective::Other(other)),
     })
@@ -263,12 +248,6 @@ pub fn infer_directives_detailed(
 }
 
 pub fn infer_transaction_postings(
-  txn: Transaction,
-) -> Result<InferredTransaction, ParseError> {
-  infer_transaction_postings_detailed(txn).map_err(InferenceError::into_parse_error)
-}
-
-pub fn infer_transaction_postings_detailed(
   mut txn: Transaction,
 ) -> Result<InferredTransaction, InferenceError> {
   let mut currencies: HashMap<String, CurrencyState> = HashMap::new();
@@ -626,8 +605,7 @@ mod tests {
     food.account = "Expenses:Food".to_string();
 
     let directives = vec![txn_with_postings(vec![cash, food])];
-    let err =
-      infer_directives_detailed(directives).expect_err("should fail unbalanced txn");
+    let err = infer_directives(directives).expect_err("should fail unbalanced txn");
 
     assert!(matches!(
       err.kind,
@@ -641,8 +619,8 @@ mod tests {
     let p2 = posting_without_amount("Assets:Cash");
 
     let directives = vec![txn_with_postings(vec![p1, p2])];
-    let err = infer_directives_detailed(directives)
-      .expect_err("should fail with two missing amounts");
+    let err =
+      infer_directives(directives).expect_err("should fail with two missing amounts");
 
     assert!(matches!(err.kind, InferenceErrorKind::MultipleAutoPostings));
   }
@@ -753,8 +731,8 @@ mod tests {
     let directives = crate::core::normalize_directives(&parsed, "test.beancount", source)
       .expect("normalize directives");
 
-    let err = infer_directives_detailed(directives)
-      .expect_err("unbalanced transaction should be rejected");
+    let err =
+      infer_directives(directives).expect_err("unbalanced transaction should be rejected");
 
     assert!(matches!(
       err.kind,
@@ -774,8 +752,7 @@ mod tests {
     let directives = crate::core::normalize_directives(&parsed, "test.beancount", source)
       .expect("normalize directives");
 
-    let err = infer_directives_detailed(directives)
-      .expect_err("missing amounts should be rejected");
+    let err = infer_directives(directives).expect_err("missing amounts should be rejected");
 
     assert!(matches!(err.kind, InferenceErrorKind::MultipleAutoPostings));
   }
