@@ -50,14 +50,14 @@ pub enum CoreDirective {
   Raw(Raw),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Raw {
   pub meta: ast::Meta,
   pub span: ast::Span,
   pub text: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Open {
   pub meta: ast::Meta,
   pub span: ast::Span,
@@ -69,7 +69,7 @@ pub struct Open {
   pub key_values: SmallKeyValues,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Close {
   pub meta: ast::Meta,
   pub span: ast::Span,
@@ -79,7 +79,7 @@ pub struct Close {
   pub key_values: SmallKeyValues,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Balance {
   pub meta: ast::Meta,
   pub span: ast::Span,
@@ -91,7 +91,7 @@ pub struct Balance {
   pub key_values: SmallKeyValues,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Pad {
   pub meta: ast::Meta,
   pub span: ast::Span,
@@ -102,7 +102,7 @@ pub struct Pad {
   pub key_values: SmallKeyValues,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Transaction {
   pub meta: ast::Meta,
   pub span: ast::Span,
@@ -116,7 +116,7 @@ pub struct Transaction {
   pub postings: SmallPostings,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Posting {
   pub meta: ast::Meta,
   pub span: ast::Span,
@@ -130,7 +130,7 @@ pub struct Posting {
   pub key_values: SmallKeyValues,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Commodity {
   pub meta: ast::Meta,
   pub span: ast::Span,
@@ -140,7 +140,7 @@ pub struct Commodity {
   pub key_values: SmallKeyValues,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Price {
   pub meta: ast::Meta,
   pub span: ast::Span,
@@ -151,7 +151,7 @@ pub struct Price {
   pub key_values: SmallKeyValues,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Event {
   pub meta: ast::Meta,
   pub span: ast::Span,
@@ -162,7 +162,7 @@ pub struct Event {
   pub key_values: SmallKeyValues,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Query {
   pub meta: ast::Meta,
   pub span: ast::Span,
@@ -173,7 +173,7 @@ pub struct Query {
   pub key_values: SmallKeyValues,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Note {
   pub meta: ast::Meta,
   pub span: ast::Span,
@@ -184,7 +184,7 @@ pub struct Note {
   pub key_values: SmallKeyValues,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Document {
   pub meta: ast::Meta,
   pub span: ast::Span,
@@ -198,7 +198,7 @@ pub struct Document {
   pub key_values: SmallKeyValues,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Custom {
   pub meta: ast::Meta,
   pub span: ast::Span,
@@ -274,7 +274,7 @@ fn parse_key_value_value(
     .transpose()
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct OptionDirective {
   pub meta: ast::Meta,
   pub span: ast::Span,
@@ -282,14 +282,14 @@ pub struct OptionDirective {
   pub value: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Include {
   pub meta: ast::Meta,
   pub span: ast::Span,
   pub filename: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Plugin {
   pub meta: ast::Meta,
   pub span: ast::Span,
@@ -297,14 +297,14 @@ pub struct Plugin {
   pub config: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct TagDirective {
   pub meta: ast::Meta,
   pub span: ast::Span,
   pub tag: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct PushMeta {
   pub meta: ast::Meta,
   pub span: ast::Span,
@@ -312,28 +312,28 @@ pub struct PushMeta {
   pub value: Option<KeyValueValue>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct PopMeta {
   pub meta: ast::Meta,
   pub span: ast::Span,
   pub key: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Comment {
   pub meta: ast::Meta,
   pub span: ast::Span,
   pub text: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Headline {
   pub meta: ast::Meta,
   pub span: ast::Span,
   pub text: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct KeyValue {
   pub span: ast::Span,
   pub key: String,
@@ -366,6 +366,12 @@ pub enum NumberExpr {
     op: BinaryOp,
     right: Box<NumberExpr>,
   },
+}
+
+impl Default for NumberExpr {
+  fn default() -> Self {
+    NumberExpr::Missing
+  }
 }
 
 impl From<ast::BinaryOp> for BinaryOp {
@@ -448,14 +454,14 @@ pub fn number_expr_to_decimal(num: &NumberExpr) -> Result<Decimal, NumberEvalErr
   }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct CostAmount {
   pub per: Option<NumberExpr>,
   pub total: Option<NumberExpr>,
   pub currency: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct CostSpec {
   pub raw: String,
   pub amount: Option<CostAmount>,
@@ -465,7 +471,7 @@ pub struct CostSpec {
   pub is_total: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Amount {
   pub raw: String,
   pub number: NumberExpr,

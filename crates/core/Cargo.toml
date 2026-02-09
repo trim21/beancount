@@ -1,0 +1,16 @@
+[package]
+name = "beancount-core"
+version = { workspace = true }
+edition = { workspace = true }
+authors = { workspace = true }
+license = { workspace = true }
+repository = { workspace = true }
+homepage = { workspace = true }
+description = "Beancount core data structures and inference helpers."
+
+[lib]
+crate-type = ["lib"]
+
+[dependencies]
+beancount-parser = { path = "../parser" }
+rust_decimal = "1.36.0"

@@ -1,5 +1,6 @@
 [workspace]
 members = [
+  "crates/core",
   "crates/parser",
   "crates/parser-py",
 ]

@@ -16,7 +16,7 @@ where
   serializer.serialize_str(value.as_str())
 }
 /// Byte offsets in the original source.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct Span {
   pub start: usize,
@@ -66,7 +66,7 @@ impl<T> WithSpan<T> {
 }
 
 /// Source location info attached to each top-level directive.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct Meta {
   #[cfg_attr(feature = "serde", serde(serialize_with = "serialize_arc_str"))]
