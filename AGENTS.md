@@ -9,8 +9,9 @@ Beancount is a double-entry accounting system that uses text files as input. Thi
 ### Instruction highlights (from .github/copilot-instructions.md)
 
 - Keep the Python API identical to upstream while swapping the parser implementation to Rust.
-- The Chumsky-based parser lives in `crates/parser/` and drives `parse_str`.
-- `crates/parser-py/` converts `CoreDirective` into Python types from `beancount/core/data.py`; add tests in Python (not Rust) because it links to Python.
+- `crates/parser/` provides the Rust parser and produces Rust core directives.
+- `crates/core/` hosts the Rust core directive/data model used by the parser and Python bindings.
+- `crates/parser-py/` converts `beancount_core::Directive` into Python types from `beancount/core/data.py`; add tests in Python (not Rust) because it links to Python.
 - After Rust changes, run `maturin develop` before testing in Python.
 - When updating `crates/parser-py/` signatures, update the stubs `beancount/parser/_rust.pyi` and `beancount/parser/_parser.pyi`.
 
@@ -19,7 +20,7 @@ Beancount is a double-entry accounting system that uses text files as input. Thi
 ### Python Package (`beancount/`)
 
 - `core/` - Core data types and utilities (accounts, amounts, inventory, positions, etc.)
-  - `data.py` - Defines Python data structures that mirror the Rust `CoreDirective` types
+  - `data.py` - Defines Python data structures that mirror Rust `beancount_core::Directive` types
   - Other modules: `account.py`, `amount.py`, `inventory.py`, `position.py`, `number.py`, etc.
 - `parser/` - Parser interface
   - `_rust.pyi` - Type stubs for the Rust parser Python bindings
@@ -31,18 +32,20 @@ Beancount is a double-entry accounting system that uses text files as input. Thi
 
 ### Rust Workspace (`crates/`)
 
-The Rust code is organized as a Cargo workspace with two crates:
+The Rust code is organized as a Cargo workspace with three crates:
 
-1. **`crates/parser/`** - Hosts the parsing engines and core AST
-   - Provides two Rust parsers: a line-scanning recursive descent parser (`parser.rs`) and a full-file Chumsky parser (`file_parser.rs`, used when the `file-parser` feature is on)
-   - Produces the internal AST used by the Rust core
-   - Defines `CoreDirective` types (Rust equivalents of Python data structures)
-   - Exposes `parse_str()` routed to the active parser based on enabled features
-   - Dependencies: `chumsky`, `chrono`, `rust_decimal`
+1. **`crates/core/`** - Rust core data model and helpers
+  - Defines the core `Directive` enum and related types used throughout the Rust implementation.
+  - Contains helpers like directive normalization and transaction posting inference.
+  - Depends on `crates/parser/` for shared AST/span/meta types (`beancount_parser::ast`).
 
-2. **`crates/parser-py/`** - Python bindings
+2. **`crates/parser/`** - Rust parser implementation
+  - Parses Beancount input into Rust core directives.
+  - Owns the parsing logic and AST definitions used across the Rust codebase.
+
+3. **`crates/parser-py/`** - Python bindings
    - Uses PyO3 to expose Rust parser to Python
-   - Converts `CoreDirective` to Python objects defined in `beancount/core/data.py`
+  - Converts `beancount_core::Directive` to Python objects defined in `beancount/core/data.py`
    - Compiled to `beancount.parser._parser_rust`
    - **Do not add Rust tests here** - test through Python instead
 
@@ -80,12 +83,15 @@ When updating function signatures in `crates/parser-py/`, you **must** update th
 
 - `Cargo.toml` - Workspace configuration
 - `pyproject.toml` - Python project configuration, dependencies, and tool settings
-- `crates/chumsky/src/lib.rs` - Chumsky parser implementation
-- `beancount/core/data.py` - Python data structures that must match Rust `CoreDirective`
+- `crates/core/src/core.rs` - Core directive/data model used by Rust + Python bindings
+- `crates/core/src/inference.rs` - Transaction posting inference helpers
+- `crates/parser/src/lib.rs` - Parser crate entrypoint
+- `crates/parser-py/src/lib.rs` - PyO3 bindings and conversion into Python objects
+- `beancount/core/data.py` - Python data structures that must match Rust `beancount_core::Directive`
 
 ## Important Notes
 
 1. Always run `maturin develop` after modifying Rust code before testing in Python
 2. The parser must maintain API compatibility with the original C parser
-3. Python data structures in `beancount/core/data.py` must remain compatible with Rust `CoreDirective`
+3. Python data structures in `beancount/core/data.py` must remain compatible with Rust `beancount_core::Directive`
 4. Type stub files must be kept in sync with the actual Rust/Python bindings

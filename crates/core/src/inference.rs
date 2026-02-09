@@ -596,4 +596,28 @@ mod tests {
     assert_eq!(price.number, Decimal::new(25, 1));
     assert_eq!(price.raw, "2.5");
   }
+
+  #[test]
+  fn fails_on_unbalanced_parsed_transaction() {
+    let source = r#"
+2020-05-05 * "馄饨"
+  Assets:Cash                                         1 CNY
+  Expenses:Food  -10 CNY
+"#;
+
+    let parsed = beancount_parser::parse_lossy(source);
+    let directives = crate::core::normalize_directives(&parsed, "test.beancount", source)
+      .expect("normalize directives");
+
+    let err = infer_directives(directives)
+      .expect_err("unbalanced transaction should be rejected");
+
+    assert!(
+      err
+        .message
+        .contains("transaction is not balanced for currency CNY"),
+      "unexpected error: {}",
+      err.message
+    );
+  }
 }
