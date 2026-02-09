@@ -182,6 +182,7 @@ pub fn infer_transaction_postings(
   mut txn: Transaction,
 ) -> Result<InferredTransaction, ParseError> {
   let mut currencies: HashMap<String, CurrencyState> = HashMap::new();
+  let mut missing_without_amount: Vec<usize> = Vec::new();
 
   for (idx, posting) in txn.postings.iter().enumerate() {
     match &posting.amount {
@@ -212,13 +213,59 @@ pub fn infer_transaction_postings(
         }
       }
       None => {
+        missing_without_amount.push(idx);
+      }
+    }
+  }
+
+  if missing_without_amount.len() > 1 {
+    return Err(ParseError {
+      line: txn.meta.line,
+      column: txn.meta.column,
+      message: format!(
+        "cannot infer amounts: {} postings are missing an amount and currency",
+        missing_without_amount.len()
+      ),
+    });
+  }
+
+  if let Some(&missing_idx) = missing_without_amount.first() {
+    let currency = match currencies.keys().next() {
+      Some(c) if currencies.len() == 1 => c.clone(),
+      _ => {
         return Err(ParseError {
-          line: posting.meta.line,
-          column: posting.meta.column,
+          line: txn.meta.line,
+          column: txn.meta.column,
           message: "posting is missing an amount; cannot infer without a currency".to_string(),
         });
       }
+    };
+
+    let state = currencies.get_mut(&currency).expect("currency key just extracted");
+    if !state.missing_indices.is_empty() {
+      return Err(ParseError {
+        line: txn.meta.line,
+        column: txn.meta.column,
+        message: "cannot infer amounts: multiple postings are missing".to_string(),
+      });
     }
+
+    let inferred = (-state.sum).normalize();
+    let amount_str = inferred.to_string();
+
+    let target: &mut Posting = txn
+      .postings
+      .get_mut(missing_idx)
+      .expect("missing index recorded during scan");
+
+    target.amount = Some(Amount {
+      raw: amount_str.clone(),
+      number: NumberExpr::Literal(amount_str),
+      currency: Some(currency.clone()),
+    });
+
+    // Keep the currency residuals consistent so later balancing checks pass.
+    state.sum += inferred;
   }
 
   for (currency, state) in currencies {
@@ -339,6 +386,16 @@ mod tests {
     }
   }
 
+  fn posting_without_amount(account: &str) -> Posting {
+    Posting {
+      meta: meta(),
+      span: span(),
+      account: account.to_string(),
+      amount: None,
+      ..Default::default()
+    }
+  }
+
   fn literal_amount(raw: &str, currency: &str) -> Amount {
     Amount {
       raw: raw.to_string(),
@@ -399,6 +456,54 @@ mod tests {
     let directives = vec![txn_with_postings(vec![posting(missing_usd.clone()), posting(missing_usd)])];
     let err = infer_directives(directives).expect_err("should fail with two missing amounts");
     assert!(err.message.contains("cannot infer amounts"));
+  }
+
+  #[test]
+  fn infers_single_missing_without_amount_when_currency_unique() {
+    let mut cash = posting(literal_amount("1", "CNY"));
+    cash.account = "Assets:Cash".to_string();
+
+    let food = posting_without_amount("Expenses:Food");
+
+    let directives = vec![txn_with_postings(vec![cash, food])];
+    let inferred = infer_directives(directives).expect("inference should succeed");
+
+    let InferredDirective::Transaction(txn) = &inferred[0] else {
+      panic!("expected transaction");
+    };
+
+    assert_eq!(txn.postings.len(), 2);
+    let inferred_amt = &txn.postings[1].amount;
+    assert_eq!(inferred_amt.currency, "CNY");
+    assert_eq!(inferred_amt.number, Decimal::new(-1, 0));
+    assert_eq!(inferred_amt.raw, "-1");
+  }
+
+  #[test]
+  fn fails_when_all_amounts_present_but_unbalanced() {
+    let cash = posting(literal_amount("1", "CNY"));
+    let mut food = posting(literal_amount("-10", "CNY"));
+    food.account = "Expenses:Food".to_string();
+
+    let directives = vec![txn_with_postings(vec![cash, food])];
+    let err = infer_directives(directives).expect_err("should fail unbalanced txn");
+
+    assert!(err
+      .message
+      .contains("transaction is not balanced for currency CNY"));
+  }
+
+  #[test]
+  fn fails_with_multiple_missing_without_amount() {
+    let p1 = posting_without_amount("Expenses:Food");
+    let p2 = posting_without_amount("Assets:Cash");
+
+    let directives = vec![txn_with_postings(vec![p1, p2])];
+    let err = infer_directives(directives).expect_err("should fail with two missing amounts");
+
+    assert!(err
+      .message
+      .contains("missing an amount and currency"));
   }
 
   #[test]
