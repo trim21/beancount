@@ -97,7 +97,7 @@ fn join_list(items: &[String]) -> String {
 }
 
 #[cfg(feature = "rich-errors")]
-fn summarize_expected<'a>(
+fn format_expected_tokens<'a>(
   expected: impl IntoIterator<Item = chumsky::error::RichPattern<'a, char>>,
 ) -> Option<String> {
   let mut items: Vec<String> = expected.into_iter().map(describe_pattern).collect();
@@ -129,7 +129,7 @@ fn format_strict_reason(reason: &chumsky::error::RichReason<'_, char>) -> String
 
   match reason {
     RichReason::ExpectedFound { expected, found } => {
-      let expected = summarize_expected(expected.clone());
+      let expected = format_expected_tokens(expected.clone());
       let found = describe_found(found.as_deref());
       match expected {
         Some(exp) => format!("expected {exp}, found {found}"),
@@ -152,7 +152,7 @@ fn strict_error_message(err: &RawStrictError<'_>) -> String {
   format!("unexpected {found}")
 }
 
-fn strict_error_to_parse_error(source: &Rope, err: RawStrictError<'_>) -> ParseError {
+fn convert_strict_error(source: &Rope, err: RawStrictError<'_>) -> ParseError {
   let span = err.span();
   let pos = position_from_rope(source, span.start);
   let message = strict_error_message(&err);
@@ -256,7 +256,7 @@ pub fn parse_strict<'a>(
     .map_err(|errors| {
       errors
         .into_iter()
-        .map(|err| strict_error_to_parse_error(&rope, err))
+        .map(|err| convert_strict_error(&rope, err))
         .collect()
     })
 }
