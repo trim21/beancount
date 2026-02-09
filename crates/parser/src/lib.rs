@@ -12,7 +12,7 @@ mod parser;
 mod utils;
 
 pub use core::{CoreDirective, normalize_directives, normalize_directives_with_rope};
-pub use parser::{parse_lossy, parse_strict};
+pub use parser::{parse_lossy, parse_strict, render_strict_error};
 
 #[deprecated(note = "use parse_lossy instead")]
 pub fn parse_str(input: &str) -> Vec<ast::Directive<'_>> {
@@ -20,10 +20,8 @@ pub fn parse_str(input: &str) -> Vec<ast::Directive<'_>> {
 }
 
 use chumsky::prelude::*;
-use ropey::Rope;
-
-#[cfg(feature = "rich-errors")]
 use chumsky::error::Rich;
+use ropey::Rope;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Position {
@@ -60,10 +58,6 @@ impl std::error::Error for ParseError {}
 
 pub type Result<T> = std::result::Result<T, ParseError>;
 
-#[cfg(not(feature = "rich-errors"))]
-pub type Error<'src> = extra::Err<Simple<'src, char>>;
-
-#[cfg(feature = "rich-errors")]
 pub type Error<'src> = extra::Err<Rich<'src, char>>;
 
 #[cfg(test)]

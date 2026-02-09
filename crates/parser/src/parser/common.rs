@@ -1,9 +1,7 @@
+use chumsky::error::Rich;
 use chumsky::prelude::*;
 use chumsky::text::whitespace;
 use smallvec::SmallVec;
-
-#[cfg(feature = "rich-errors")]
-use chumsky::error::Rich;
 
 use crate::Error;
 use crate::ast;
@@ -324,12 +322,6 @@ pub(super) fn raw_directive_recovery_parser<'src>()
     })
 }
 
-#[cfg(not(feature = "rich-errors"))]
-fn recovery_error<'src>(span: SimpleSpan) -> Simple<'src, char> {
-  Simple::new(None, span)
-}
-
-#[cfg(feature = "rich-errors")]
 fn recovery_error<'src>(span: SimpleSpan) -> Rich<'src, char> {
   Rich::custom(span, "expected directive")
 }

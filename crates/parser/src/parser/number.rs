@@ -1,12 +1,6 @@
+use chumsky::error::Rich;
 use chumsky::prelude::*;
 
-#[cfg(feature = "rich-errors")]
-use chumsky::error::Rich;
-
-#[cfg(not(feature = "rich-errors"))]
-type ParserError<'src> = Simple<'src, char>;
-
-#[cfg(feature = "rich-errors")]
 type ParserError<'src> = Rich<'src, char>;
 
 use crate::{Error, ast};
@@ -232,12 +226,6 @@ fn skip_ws(raw: &str, idx: &mut usize) {
   }
 }
 
-#[cfg(not(feature = "rich-errors"))]
-fn simple_error<'src>(pos: usize, _msg: &'static str) -> ParserError<'src> {
-  Simple::new(None, SimpleSpan::new((), pos..pos + 1))
-}
-
-#[cfg(feature = "rich-errors")]
 fn simple_error<'src>(pos: usize, msg: &'static str) -> ParserError<'src> {
   Rich::custom(SimpleSpan::new((), pos..pos + 1), msg)
 }

@@ -2,6 +2,7 @@ use chumsky::prelude::*;
 
 use crate::Error;
 use crate::ast;
+use ariadne::{Label, Report, ReportKind, Source};
 
 mod balance;
 mod close;
@@ -28,10 +29,7 @@ mod query;
 mod raw;
 mod transaction;
 
-#[cfg(feature = "rich-errors")]
 pub type StrictError<'src> = chumsky::error::Rich<'src, char>;
-#[cfg(not(feature = "rich-errors"))]
-pub type StrictError<'src> = chumsky::error::Simple<'src, char>;
 
 fn skipped_line_parser<'src>()
 -> impl Parser<'src, &'src str, Option<ast::Directive<'src>>, Error<'src>> {
@@ -39,6 +37,7 @@ fn skipped_line_parser<'src>()
     common::ws0_parser().then_ignore(common::eol()).to(None),
     common::ws1_parser().then_ignore(end()).to(None),
   ))
+  .labelled("blank line")
 }
 
 fn directive_parser<'src>()
@@ -94,6 +93,7 @@ fn directive_parser_strict<'src>()
     custom::custom_directive_parser(),
     transaction::transaction_directive_parser(),
   ))
+  .labelled("directive")
 }
 
 fn declarations_parser<'src>()
@@ -110,6 +110,8 @@ fn declarations_parser_strict<'src>()
     .collect::<Vec<_>>()
 }
 
+
+
 pub fn parse_lossy<'a>(source: &'a str) -> Vec<ast::Directive<'a>> {
   declarations_parser()
     .then_ignore(end())
@@ -119,13 +121,32 @@ pub fn parse_lossy<'a>(source: &'a str) -> Vec<ast::Directive<'a>> {
     .unwrap_or_else(Vec::new)
 }
 
-/// Parse without recovery to `Raw`; returns errors instead.
+/// Parse without recovery to `Raw`; returns rich errors with spans.
 pub fn parse_strict<'a>(
   source: &'a str,
 ) -> Result<Vec<ast::Directive<'a>>, Vec<StrictError<'a>>> {
+
   declarations_parser_strict()
     .then_ignore(end())
     .parse(source)
     .into_result()
     .map(|directives| directives.into_iter().flatten().collect())
+}
+
+/// Render a `Rich` strict parser error to a human-friendly diagnostic using Ariadne.
+pub fn render_strict_error(
+  source_id: &str,
+  source: &str,
+  error: &StrictError<'_>,
+) -> String {
+  let span = error.span().into_range();
+  let message = error.to_string();
+
+  let mut out = Vec::new();
+  let report = Report::build(ReportKind::Error, source_id, span.start)
+    .with_message(&message)
+    .with_label(Label::new((source_id, span)).with_message(message));
+
+  let _ = report.finish().write((source_id, Source::from(source)), &mut out);
+  String::from_utf8_lossy(&out).into_owned()
 }
