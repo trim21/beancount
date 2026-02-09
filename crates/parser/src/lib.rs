@@ -5,13 +5,11 @@
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 
 pub mod ast;
-pub mod core;
 pub mod path_utils;
 
 mod parser;
 mod utils;
 
-pub use core::{CoreDirective, normalize_directives, normalize_directives_with_rope};
 pub use parser::{parse_lossy, parse_strict, render_strict_error};
 
 #[deprecated(note = "use parse_lossy instead")]

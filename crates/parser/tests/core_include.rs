@@ -1,6 +1,6 @@
 #[path = "core_common.rs"]
 mod common;
-use beancount_parser::core::Include;
+use beancount_core::Include;
 use common::{lines, parse_as};
 
 #[test]

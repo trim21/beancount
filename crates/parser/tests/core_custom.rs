@@ -1,6 +1,6 @@
 #[path = "core_common.rs"]
 mod common;
-use beancount_parser::core::{Custom, CustomValue, NumberExpr};
+use beancount_core::{Custom, CustomValue, NumberExpr};
 use common::{collect_ops, lines, parse_as};
 
 #[test]

@@ -1,6 +1,6 @@
 #[path = "core_common.rs"]
 mod common;
-use beancount_parser::core::{Event, Query};
+use beancount_core::{Event, Query};
 use common::{lines, parse_as};
 use smallvec::smallvec;
 

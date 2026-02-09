@@ -2,16 +2,17 @@ use std::collections::HashMap;
 
 use rust_decimal::Decimal;
 
-use beancount_parser::core::{
-  number_expr_to_decimal, Amount, CoreDirective, CostAmount, CostSpec, NumberExpr, Posting,
+use crate::core::{
+  number_expr_to_decimal, Amount, Directive, CostAmount, CostSpec, NumberExpr, Posting,
   Transaction,
 };
-use beancount_parser::{ast, ParseError};
+use beancount_parser::ast;
+use crate::ParseError;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InferredDirective {
   Transaction(InferredTransaction),
-  Other(CoreDirective),
+  Other(Directive),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -22,9 +23,9 @@ pub struct InferredTransaction {
   pub txn: Option<String>,
   pub payee: Option<String>,
   pub narration: Option<String>,
-  pub tags: beancount_parser::core::SmallStrVec,
-  pub links: beancount_parser::core::SmallStrVec,
-  pub key_values: beancount_parser::core::SmallKeyValues,
+  pub tags: crate::core::SmallStrVec,
+  pub links: crate::core::SmallStrVec,
+  pub key_values: crate::core::SmallKeyValues,
   pub postings: Vec<InferredPosting>,
 }
 
@@ -35,11 +36,11 @@ pub struct InferredPosting {
   pub opt_flag: Option<String>,
   pub account: String,
   pub amount: InferredAmount,
-  pub cost_spec: Option<beancount_parser::core::CostSpec>,
+  pub cost_spec: Option<crate::core::CostSpec>,
   pub price_operator: Option<ast::PriceOperator>,
   pub price_annotation: Option<InferredAmount>,
   pub comment: Option<String>,
-  pub key_values: beancount_parser::core::SmallKeyValues,
+  pub key_values: crate::core::SmallKeyValues,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -164,12 +165,12 @@ fn resolve_price(
 /// If multiple postings are missing for the same currency or the transaction cannot
 /// balance, a `ParseError` is returned.
 pub fn infer_directives(
-  directives: Vec<CoreDirective>,
+  directives: Vec<Directive>,
 ) -> Result<Vec<InferredDirective>, ParseError> {
   directives
     .into_iter()
     .map(|directive| match directive {
-      CoreDirective::Transaction(txn) => {
+      Directive::Transaction(txn) => {
         infer_transaction_postings(txn).map(InferredDirective::Transaction)
       }
       other => Ok(InferredDirective::Other(other)),
@@ -314,7 +315,7 @@ pub fn infer_transaction_postings(
 #[cfg(test)]
 mod tests {
   use super::*;
-  use beancount_parser::core::{Amount, CoreDirective, CostAmount, CostSpec, NumberExpr, Posting};
+  use crate::core::{Amount, Directive, CostAmount, CostSpec, NumberExpr, Posting};
   use std::sync::Arc;
 
   fn meta() -> ast::Meta {
@@ -346,8 +347,8 @@ mod tests {
     }
   }
 
-  fn txn_with_postings(postings: Vec<Posting>) -> CoreDirective {
-    CoreDirective::Transaction(Transaction {
+  fn txn_with_postings(postings: Vec<Posting>) -> Directive {
+    Directive::Transaction(Transaction {
       meta: meta(),
       span: span(),
       date: "2024-01-01".to_string(),

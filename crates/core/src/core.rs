@@ -1,5 +1,5 @@
-use crate::path_utils::resolve_path;
-use crate::{ParseError, Position, ast, position_from_rope};
+use beancount_parser::path_utils::resolve_path;
+use beancount_parser::{ParseError, Position, ast};
 use chrono::NaiveDate;
 use ropey::Rope;
 use rust_decimal::Decimal;
@@ -14,6 +14,18 @@ pub type SmallKeyValues = SmallVec<[KeyValue; 4]>;
 pub type SmallPostings = SmallVec<[Posting; 4]>;
 pub type SmallCustomValues = SmallVec<[CustomValue; 2]>;
 
+fn position_from_rope(rope: &Rope, offset: usize) -> Position {
+  let char_idx = rope.byte_to_char(offset);
+  let line_idx = rope.char_to_line(char_idx);
+  let line_start_char = rope.line_to_char(line_idx);
+  let line_start_byte = rope.char_to_byte(line_start_char);
+
+  Position {
+    line: line_idx + 1,
+    column: offset.saturating_sub(line_start_byte) + 1,
+  }
+}
+
 fn meta_at(filename: &Arc<String>, rope: &Rope, offset: usize) -> ast::Meta {
   let Position { line, column } = position_from_rope(rope, offset);
 
@@ -25,7 +37,7 @@ fn meta_at(filename: &Arc<String>, rope: &Rope, offset: usize) -> ast::Meta {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum CoreDirective {
+pub enum Directive {
   Open(Open),
   Close(Close),
   Balance(Balance),
@@ -482,7 +494,7 @@ pub fn normalize_directives<'a>(
   directives: &[ast::Directive<'a>],
   filename: &str,
   source: &str,
-) -> Result<Vec<CoreDirective>, ParseError> {
+) -> Result<Vec<Directive>, ParseError> {
   let rope = Rope::from_str(source);
   let filename = Arc::new(filename.to_string());
   normalize_directives_with_meta(directives, &filename, &rope)
@@ -492,7 +504,7 @@ pub fn normalize_directives_with_rope<'a>(
   directives: &[ast::Directive<'a>],
   filename: &str,
   rope: &Rope,
-) -> Result<Vec<CoreDirective>, ParseError> {
+) -> Result<Vec<Directive>, ParseError> {
   let filename = Arc::new(filename.to_string());
   normalize_directives_with_meta(directives, &filename, rope)
 }
@@ -501,15 +513,15 @@ fn normalize_directives_with_meta<'a>(
   directives: &[ast::Directive<'a>],
   filename: &Arc<String>,
   rope: &Rope,
-) -> Result<Vec<CoreDirective>, ParseError> {
+) -> Result<Vec<Directive>, ParseError> {
   directives
     .iter()
     .cloned()
-    .map(|directive| CoreDirective::try_from((directive, filename, rope)))
+    .map(|directive| Directive::try_from((directive, filename, rope)))
     .collect()
 }
 
-impl<'a> TryFrom<(ast::Directive<'a>, &Arc<String>, &Rope)> for CoreDirective {
+impl<'a> TryFrom<(ast::Directive<'a>, &Arc<String>, &Rope)> for Directive {
   type Error = ParseError;
 
   fn try_from(
@@ -519,70 +531,70 @@ impl<'a> TryFrom<(ast::Directive<'a>, &Arc<String>, &Rope)> for CoreDirective {
 
     match directive {
       ast::Directive::Open(open) => {
-        Ok(CoreDirective::Open(Open::try_from((open, filename, rope))?))
+        Ok(Directive::Open(Open::try_from((open, filename, rope))?))
       }
-      ast::Directive::Close(close) => Ok(CoreDirective::Close(Close::try_from((
+      ast::Directive::Close(close) => Ok(Directive::Close(Close::try_from((
         close, filename, rope,
       ))?)),
-      ast::Directive::Balance(balance) => Ok(CoreDirective::Balance(Balance::try_from((
+      ast::Directive::Balance(balance) => Ok(Directive::Balance(Balance::try_from((
         balance, filename, rope,
       ))?)),
       ast::Directive::Pad(pad) => {
-        Ok(CoreDirective::Pad(Pad::try_from((pad, filename, rope))?))
+        Ok(Directive::Pad(Pad::try_from((pad, filename, rope))?))
       }
-      ast::Directive::Transaction(txn) => Ok(CoreDirective::Transaction(
+      ast::Directive::Transaction(txn) => Ok(Directive::Transaction(
         Transaction::try_from((txn, filename, rope))?,
       )),
-      ast::Directive::Commodity(cmdty) => Ok(CoreDirective::Commodity(
+      ast::Directive::Commodity(cmdty) => Ok(Directive::Commodity(
         Commodity::try_from((cmdty, filename, rope))?,
       )),
-      ast::Directive::Price(price) => Ok(CoreDirective::Price(Price::try_from((
+      ast::Directive::Price(price) => Ok(Directive::Price(Price::try_from((
         price, filename, rope,
       ))?)),
-      ast::Directive::Event(event) => Ok(CoreDirective::Event(Event::try_from((
+      ast::Directive::Event(event) => Ok(Directive::Event(Event::try_from((
         event, filename, rope,
       ))?)),
-      ast::Directive::Query(query) => Ok(CoreDirective::Query(Query::try_from((
+      ast::Directive::Query(query) => Ok(Directive::Query(Query::try_from((
         query, filename, rope,
       ))?)),
       ast::Directive::Note(note) => {
-        Ok(CoreDirective::Note(Note::try_from((note, filename, rope))?))
+        Ok(Directive::Note(Note::try_from((note, filename, rope))?))
       }
-      ast::Directive::Document(doc) => Ok(CoreDirective::Document(Document::try_from((
+      ast::Directive::Document(doc) => Ok(Directive::Document(Document::try_from((
         doc, filename, rope,
       ))?)),
-      ast::Directive::Custom(custom) => Ok(CoreDirective::Custom(Custom::try_from((
+      ast::Directive::Custom(custom) => Ok(Directive::Custom(Custom::try_from((
         custom, filename, rope,
       ))?)),
-      ast::Directive::Option(opt) => Ok(CoreDirective::Option(OptionDirective::try_from(
+      ast::Directive::Option(opt) => Ok(Directive::Option(OptionDirective::try_from(
         (opt, filename, rope),
       )?)),
-      ast::Directive::Include(include) => Ok(CoreDirective::Include(Include::try_from((
+      ast::Directive::Include(include) => Ok(Directive::Include(Include::try_from((
         include, filename, rope,
       ))?)),
-      ast::Directive::Plugin(plugin) => Ok(CoreDirective::Plugin(Plugin::try_from((
+      ast::Directive::Plugin(plugin) => Ok(Directive::Plugin(Plugin::try_from((
         plugin, filename, rope,
       ))?)),
-      ast::Directive::PushTag(tag) => Ok(CoreDirective::PushTag(TagDirective::try_from(
+      ast::Directive::PushTag(tag) => Ok(Directive::PushTag(TagDirective::try_from(
         (tag, filename, rope),
       )?)),
-      ast::Directive::PopTag(tag) => Ok(CoreDirective::PopTag(TagDirective::try_from((
+      ast::Directive::PopTag(tag) => Ok(Directive::PopTag(TagDirective::try_from((
         tag, filename, rope,
       ))?)),
-      ast::Directive::PushMeta(pm) => Ok(CoreDirective::PushMeta(PushMeta::try_from((
+      ast::Directive::PushMeta(pm) => Ok(Directive::PushMeta(PushMeta::try_from((
         pm, filename, rope,
       ))?)),
-      ast::Directive::PopMeta(pm) => Ok(CoreDirective::PopMeta(PopMeta::try_from((
+      ast::Directive::PopMeta(pm) => Ok(Directive::PopMeta(PopMeta::try_from((
         pm, filename, rope,
       ))?)),
-      ast::Directive::Comment(comment) => Ok(CoreDirective::Comment(Comment::try_from((
+      ast::Directive::Comment(comment) => Ok(Directive::Comment(Comment::try_from((
         comment, filename, rope,
       ))?)),
-      ast::Directive::Headline(headline) => Ok(CoreDirective::Headline(
+      ast::Directive::Headline(headline) => Ok(Directive::Headline(
         Headline::try_from((headline, filename, rope))?,
       )),
       ast::Directive::Raw(raw) => {
-        Ok(CoreDirective::Raw(Raw::try_from((raw, filename, rope))?))
+        Ok(Directive::Raw(Raw::try_from((raw, filename, rope))?))
       }
     }
   }

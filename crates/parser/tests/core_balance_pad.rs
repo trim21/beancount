@@ -1,6 +1,6 @@
 #[path = "core_common.rs"]
 mod common;
-use beancount_parser::core::{Amount, Balance, NumberExpr, Pad};
+use beancount_core::{Amount, Balance, NumberExpr, Pad};
 use common::{lines, parse_as};
 use smallvec::smallvec;
 

@@ -33,6 +33,7 @@ path = "src/bin/ast_json.rs"
 required-features = ["serde"]
 
 [dev-dependencies]
+beancount-core = { path = "../core" }
 similar = { workspace = true }
 criterion = "0.5.1"
 

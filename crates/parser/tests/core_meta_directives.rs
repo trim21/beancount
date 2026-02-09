@@ -1,6 +1,6 @@
 #[path = "core_common.rs"]
 mod common;
-use beancount_parser::core::{KeyValue, KeyValueValue, Note, PopMeta, PushMeta};
+use beancount_core::{KeyValue, KeyValueValue, Note, PopMeta, PushMeta};
 use common::{lines, parse_as};
 
 #[test]

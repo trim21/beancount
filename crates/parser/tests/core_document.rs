@@ -1,6 +1,6 @@
 #[path = "core_common.rs"]
 mod common;
-use beancount_parser::core::{Document, KeyValue, KeyValueValue};
+use beancount_core::{Document, KeyValue, KeyValueValue};
 use common::{lines, parse_as};
 use smallvec::smallvec;
 use std::path::PathBuf;

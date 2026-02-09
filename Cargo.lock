@@ -91,7 +91,11 @@ name = "beancount-core"
 version = "3.3.0-alpha.0"
 dependencies = [
  "beancount-parser",
+ "chrono",
+ "ropey",
  "rust_decimal",
+ "serde_json",
+ "smallvec",
 ]
 
 [[package]]
@@ -100,6 +104,7 @@ version = "3.3.0-alpha.0"
 dependencies = [
  "anyhow",
  "ariadne",
+ "beancount-core",
  "chrono",
  "chumsky",
  "criterion",
@@ -116,6 +121,7 @@ dependencies = [
 name = "beancount-parser-py"
 version = "3.3.0-alpha.0"
 dependencies = [
+ "beancount-core",
  "beancount-parser",
  "chrono",
  "lazy_static",

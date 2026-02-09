@@ -1,6 +1,6 @@
 #[path = "core_common.rs"]
 mod common;
-use beancount_parser::core::OptionDirective;
+use beancount_core::OptionDirective;
 use common::{lines, parse_as};
 
 #[test]

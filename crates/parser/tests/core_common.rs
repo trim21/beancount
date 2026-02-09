@@ -1,7 +1,8 @@
-use beancount_parser::core::{BinaryOp, CoreDirective, NumberExpr};
-use beancount_parser::{
-  ast, normalize_directives, normalize_directives_with_rope, parse_lossy,
+use beancount_core::{
+  BinaryOp, Directive, NumberExpr, normalize_directives,
+  normalize_directives_with_rope,
 };
+use beancount_parser::{ast, parse_lossy};
 use ropey::Rope;
 
 #[cfg(test)]
@@ -12,14 +13,14 @@ pub(crate) fn lines(parts: &[&str]) -> String {
 
 #[cfg(test)]
 #[allow(dead_code)]
-pub(crate) fn parse_core(input: &str, filename: &str) -> Vec<CoreDirective> {
+pub(crate) fn parse_core(input: &str, filename: &str) -> Vec<Directive> {
   let ast = parse_lossy(input);
   normalize_directives(&ast, filename, input).expect("normalize failed")
 }
 
 #[cfg(test)]
 pub(crate) trait FromCore: Sized {
-  fn from_core(dir: CoreDirective) -> Option<Self>;
+  fn from_core(dir: Directive) -> Option<Self>;
 }
 
 macro_rules! impl_from_core {
@@ -35,49 +36,49 @@ macro_rules! impl_from_core {
   };
 }
 
-impl_from_core!(beancount_parser::core::Open, Open);
-impl_from_core!(beancount_parser::core::Close, Close);
-impl_from_core!(beancount_parser::core::Balance, Balance);
-impl_from_core!(beancount_parser::core::Pad, Pad);
-impl_from_core!(beancount_parser::core::Transaction, Transaction);
-impl_from_core!(beancount_parser::core::Commodity, Commodity);
-impl_from_core!(beancount_parser::core::Price, Price);
-impl_from_core!(beancount_parser::core::Event, Event);
-impl_from_core!(beancount_parser::core::Query, Query);
-impl_from_core!(beancount_parser::core::Note, Note);
-impl_from_core!(beancount_parser::core::Document, Document);
-impl_from_core!(beancount_parser::core::Custom, Custom);
-impl_from_core!(beancount_parser::core::OptionDirective, Option);
-impl_from_core!(beancount_parser::core::Include, Include);
-impl_from_core!(beancount_parser::core::Plugin, Plugin);
-impl_from_core!(beancount_parser::core::PushMeta, PushMeta);
-impl_from_core!(beancount_parser::core::PopMeta, PopMeta);
-impl_from_core!(beancount_parser::core::Comment, Comment);
-impl_from_core!(beancount_parser::core::Headline, Headline);
+impl_from_core!(beancount_core::Open, Open);
+impl_from_core!(beancount_core::Close, Close);
+impl_from_core!(beancount_core::Balance, Balance);
+impl_from_core!(beancount_core::Pad, Pad);
+impl_from_core!(beancount_core::Transaction, Transaction);
+impl_from_core!(beancount_core::Commodity, Commodity);
+impl_from_core!(beancount_core::Price, Price);
+impl_from_core!(beancount_core::Event, Event);
+impl_from_core!(beancount_core::Query, Query);
+impl_from_core!(beancount_core::Note, Note);
+impl_from_core!(beancount_core::Document, Document);
+impl_from_core!(beancount_core::Custom, Custom);
+impl_from_core!(beancount_core::OptionDirective, Option);
+impl_from_core!(beancount_core::Include, Include);
+impl_from_core!(beancount_core::Plugin, Plugin);
+impl_from_core!(beancount_core::PushMeta, PushMeta);
+impl_from_core!(beancount_core::PopMeta, PopMeta);
+impl_from_core!(beancount_core::Comment, Comment);
+impl_from_core!(beancount_core::Headline, Headline);
 
 #[cfg(test)]
 #[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct PushtagDir(pub beancount_parser::core::TagDirective);
+pub(crate) struct PushtagDir(pub beancount_core::TagDirective);
 
 #[cfg(test)]
 #[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct PoptagDir(pub beancount_parser::core::TagDirective);
+pub(crate) struct PoptagDir(pub beancount_core::TagDirective);
 
 impl FromCore for PushtagDir {
-  fn from_core(dir: CoreDirective) -> Option<Self> {
+  fn from_core(dir: Directive) -> Option<Self> {
     match dir {
-      CoreDirective::PushTag(v) => Some(Self(v)),
+      Directive::PushTag(v) => Some(Self(v)),
       _ => None,
     }
   }
 }
 
 impl FromCore for PoptagDir {
-  fn from_core(dir: CoreDirective) -> Option<Self> {
+  fn from_core(dir: Directive) -> Option<Self> {
     match dir {
-      CoreDirective::PopTag(v) => Some(Self(v)),
+      Directive::PopTag(v) => Some(Self(v)),
       _ => None,
     }
   }

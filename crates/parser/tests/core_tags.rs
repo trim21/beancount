@@ -1,6 +1,6 @@
 #[path = "core_common.rs"]
 mod common;
-use beancount_parser::core::TagDirective;
+use beancount_core::TagDirective;
 use common::{PoptagDir, PushtagDir, lines, parse_as};
 
 #[test]

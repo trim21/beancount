@@ -4,10 +4,10 @@
 
 use beancount_parser::ParseError;
 use beancount_parser::ast;
-use beancount_parser::core;
+use beancount_core as core;
 use beancount_parser::parse_lossy;
 use chrono::{Datelike, NaiveDate};
-use core::CoreDirective;
+use core::Directive;
 use core::normalize_directives;
 use pyo3::IntoPyObject;
 use pyo3::exceptions::PyValueError;
@@ -470,10 +470,10 @@ fn build_parser_error(
 }
 
 fn partition_directives(
-  directives: Vec<CoreDirective>,
+  directives: Vec<Directive>,
 ) -> (
   Vec<String>,
-  Vec<CoreDirective>,
+  Vec<Directive>,
   Vec<core::OptionDirective>,
   Vec<core::Plugin>,
 ) {
@@ -484,16 +484,16 @@ fn partition_directives(
 
   for directive in directives {
     match directive {
-      CoreDirective::Include(include) => includes.push(include.filename.clone()),
-      CoreDirective::Option(opt) => options.push(opt),
-      CoreDirective::Plugin(plugin) => plugins.push(plugin),
-      CoreDirective::PushTag(_)
-      | CoreDirective::PopTag(_)
-      | CoreDirective::PushMeta(_)
-      | CoreDirective::PopMeta(_)
-      | CoreDirective::Headline(_)
-      | CoreDirective::Comment(_)
-      | CoreDirective::Raw(_) => filtered.push(directive),
+      Directive::Include(include) => includes.push(include.filename.clone()),
+      Directive::Option(opt) => options.push(opt),
+      Directive::Plugin(plugin) => plugins.push(plugin),
+      Directive::PushTag(_)
+      | Directive::PopTag(_)
+      | Directive::PushMeta(_)
+      | Directive::PopMeta(_)
+      | Directive::Headline(_)
+      | Directive::Comment(_)
+      | Directive::Raw(_) => filtered.push(directive),
       other => filtered.push(other),
     }
   }
@@ -504,7 +504,7 @@ type PyEntriesAndErrors = (Vec<Py<PyAny>>, Vec<Py<PyAny>>);
 
 fn convert_directives(
   py: Python<'_>,
-  directives: Vec<CoreDirective>,
+  directives: Vec<Directive>,
   filename: &str,
   dcontext: &Bound<'_, PyAny>,
 ) -> PyResult<PyEntriesAndErrors> {
@@ -517,7 +517,7 @@ fn convert_directives(
 
   for directive in directives {
     match directive {
-      CoreDirective::PushMeta(pm) => {
+      Directive::PushMeta(pm) => {
         let kv = core::KeyValue {
           span: pm.span,
           key: pm.key.clone(),
@@ -525,7 +525,7 @@ fn convert_directives(
         };
         active_meta.entry(pm.key).or_default().push(kv);
       }
-      CoreDirective::PopMeta(pm) => match active_meta.get_mut(&pm.key) {
+      Directive::PopMeta(pm) => match active_meta.get_mut(&pm.key) {
         Some(stack) => {
           if stack.pop().is_none() {
             let err = ParseError {
@@ -548,10 +548,10 @@ fn convert_directives(
           errors.push(build_parser_error(py, err, filename)?);
         }
       },
-      CoreDirective::PushTag(tag) => {
+      Directive::PushTag(tag) => {
         active_tags.insert(tag.tag.clone());
       }
-      CoreDirective::PopTag(tag) => {
+      Directive::PopTag(tag) => {
         if !active_tags.remove(&tag.tag) {
           let err = ParseError {
             line: tag.meta.line,
@@ -561,7 +561,7 @@ fn convert_directives(
           errors.push(build_parser_error(py, err, filename)?);
         }
       }
-      CoreDirective::Transaction(txn) => {
+      Directive::Transaction(txn) => {
         let mut txn = txn.clone();
         txn.key_values = apply_meta_to_key_values(txn.key_values, &active_meta);
 
@@ -575,7 +575,7 @@ fn convert_directives(
           entries.push(convert_transaction(py, &tagged, dcontext)?);
         }
       }
-      CoreDirective::Document(doc) => {
+      Directive::Document(doc) => {
         let mut doc = doc.clone();
         doc.key_values = apply_meta_to_key_values(doc.key_values, &active_meta);
 
@@ -589,10 +589,10 @@ fn convert_directives(
           entries.push(convert_document(py, &tagged)?);
         }
       }
-      CoreDirective::Comment(_) | CoreDirective::Headline(_) => {
+      Directive::Comment(_) | Directive::Headline(_) => {
         // Ignore comments in Python bindings.
       }
-      CoreDirective::Raw(raw) => {
+      Directive::Raw(raw) => {
         let err = ParseError {
           line: raw.meta.line,
           column: raw.meta.column,
@@ -657,57 +657,57 @@ fn apply_meta_to_key_values(
 }
 
 fn apply_meta_to_directive(
-  directive: CoreDirective,
+  directive: Directive,
   active_meta: &BTreeMap<String, Vec<core::KeyValue>>,
-) -> CoreDirective {
+) -> Directive {
   match directive {
-    CoreDirective::Open(mut open) => {
+    Directive::Open(mut open) => {
       open.key_values = apply_meta_to_key_values(open.key_values, active_meta);
-      CoreDirective::Open(open)
+      Directive::Open(open)
     }
-    CoreDirective::Close(mut close) => {
+    Directive::Close(mut close) => {
       close.key_values = apply_meta_to_key_values(close.key_values, active_meta);
-      CoreDirective::Close(close)
+      Directive::Close(close)
     }
-    CoreDirective::Balance(mut bal) => {
+    Directive::Balance(mut bal) => {
       bal.key_values = apply_meta_to_key_values(bal.key_values, active_meta);
-      CoreDirective::Balance(bal)
+      Directive::Balance(bal)
     }
-    CoreDirective::Pad(mut pad) => {
+    Directive::Pad(mut pad) => {
       pad.key_values = apply_meta_to_key_values(pad.key_values, active_meta);
-      CoreDirective::Pad(pad)
+      Directive::Pad(pad)
     }
-    CoreDirective::Commodity(mut c) => {
+    Directive::Commodity(mut c) => {
       c.key_values = apply_meta_to_key_values(c.key_values, active_meta);
-      CoreDirective::Commodity(c)
+      Directive::Commodity(c)
     }
-    CoreDirective::Price(mut p) => {
+    Directive::Price(mut p) => {
       p.key_values = apply_meta_to_key_values(p.key_values, active_meta);
-      CoreDirective::Price(p)
+      Directive::Price(p)
     }
-    CoreDirective::Event(mut e) => {
+    Directive::Event(mut e) => {
       e.key_values = apply_meta_to_key_values(e.key_values, active_meta);
-      CoreDirective::Event(e)
+      Directive::Event(e)
     }
-    CoreDirective::Query(mut q) => {
+    Directive::Query(mut q) => {
       q.key_values = apply_meta_to_key_values(q.key_values, active_meta);
-      CoreDirective::Query(q)
+      Directive::Query(q)
     }
-    CoreDirective::Note(mut n) => {
+    Directive::Note(mut n) => {
       n.key_values = apply_meta_to_key_values(n.key_values, active_meta);
-      CoreDirective::Note(n)
+      Directive::Note(n)
     }
-    CoreDirective::Document(mut d) => {
+    Directive::Document(mut d) => {
       d.key_values = apply_meta_to_key_values(d.key_values, active_meta);
-      CoreDirective::Document(d)
+      Directive::Document(d)
     }
-    CoreDirective::Custom(mut c) => {
+    Directive::Custom(mut c) => {
       c.key_values = apply_meta_to_key_values(c.key_values, active_meta);
-      CoreDirective::Custom(c)
+      Directive::Custom(c)
     }
-    CoreDirective::Transaction(mut t) => {
+    Directive::Transaction(mut t) => {
       t.key_values = apply_meta_to_key_values(t.key_values, active_meta);
-      CoreDirective::Transaction(t)
+      Directive::Transaction(t)
     }
     other => other,
   }
@@ -715,22 +715,22 @@ fn apply_meta_to_directive(
 
 fn convert_directive(
   py: Python<'_>,
-  directive: &CoreDirective,
+  directive: &Directive,
   dcontext: &Bound<'_, PyAny>,
 ) -> PyResult<Option<Py<PyAny>>> {
   match directive {
-    CoreDirective::Open(open) => convert_open(py, open).map(Some),
-    CoreDirective::Transaction(txn) => convert_transaction(py, txn, dcontext).map(Some),
-    CoreDirective::Close(close) => convert_close(py, close).map(Some),
-    CoreDirective::Balance(balance) => convert_balance(py, balance, dcontext).map(Some),
-    CoreDirective::Pad(pad) => convert_pad(py, pad).map(Some),
-    CoreDirective::Commodity(commodity) => convert_commodity(py, commodity).map(Some),
-    CoreDirective::Price(price) => convert_price(py, price, dcontext).map(Some),
-    CoreDirective::Event(event) => convert_event(py, event).map(Some),
-    CoreDirective::Query(query) => convert_query(py, query).map(Some),
-    CoreDirective::Note(note) => convert_note(py, note).map(Some),
-    CoreDirective::Document(doc) => convert_document(py, doc).map(Some),
-    CoreDirective::Custom(custom) => convert_custom(py, custom).map(Some),
+    Directive::Open(open) => convert_open(py, open).map(Some),
+    Directive::Transaction(txn) => convert_transaction(py, txn, dcontext).map(Some),
+    Directive::Close(close) => convert_close(py, close).map(Some),
+    Directive::Balance(balance) => convert_balance(py, balance, dcontext).map(Some),
+    Directive::Pad(pad) => convert_pad(py, pad).map(Some),
+    Directive::Commodity(commodity) => convert_commodity(py, commodity).map(Some),
+    Directive::Price(price) => convert_price(py, price, dcontext).map(Some),
+    Directive::Event(event) => convert_event(py, event).map(Some),
+    Directive::Query(query) => convert_query(py, query).map(Some),
+    Directive::Note(note) => convert_note(py, note).map(Some),
+    Directive::Document(doc) => convert_document(py, doc).map(Some),
+    Directive::Custom(custom) => convert_custom(py, custom).map(Some),
     _ => Ok(None),
   }
 }
