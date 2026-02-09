@@ -64,7 +64,7 @@ fn describe_pattern(expected: chumsky::error::RichPattern<'_, char>) -> String {
     RichPattern::SomethingElse => "something else".to_string(),
     RichPattern::EndOfInput => "end of input".to_string(),
     // `RichPattern` is non-exhaustive; surface any future variants explicitly.
-    _ => "unknown pattern type".to_string(),
+    _ => "unknown pattern type (please report this)".to_string(),
   }
 }
 
@@ -104,13 +104,14 @@ fn format_expected_tokens<'a>(
   items.sort();
   items.dedup();
 
-  if items.is_empty() {
+  let count = items.len();
+  if count == 0 {
     return None;
   }
 
   // Limit the number of expected tokens we surface to keep messages concise.
-  if items.len() > MAX_DISPLAYED_EXPECTED {
-    let remaining = items.len() - MAX_DISPLAYED_EXPECTED;
+  if count > MAX_DISPLAYED_EXPECTED {
+    let remaining = count - MAX_DISPLAYED_EXPECTED;
     let head = join_list(&items[..MAX_DISPLAYED_EXPECTED]);
     let suffix = if remaining == 1 {
       "1 more".to_string()
