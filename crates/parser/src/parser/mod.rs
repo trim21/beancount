@@ -74,6 +74,12 @@ fn describe_char(ch: char) -> String {
     '\r' => "carriage return".to_string(),
     '\t' => "tab".to_string(),
     ' ' => "space".to_string(),
+    '#' => "comment (# …)".to_string(),
+    ';' => "comment (; …)".to_string(),
+    '*' => "headline (* …)".to_string(),
+    'i' | 'I' => "include directive".to_string(),
+    'o' | 'O' => "option directive".to_string(),
+    d if d.is_ascii_digit() => "date (YYYY-…)".to_string(),
     other => format!("'{other}'"),
   }
 }
