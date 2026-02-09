@@ -2,7 +2,8 @@ use beancount_parser::parse_strict;
 
 #[test]
 fn strict_error_reports_position() {
-  let src = "2014-01-01 open Assets:Cash\nbroken line";
+  let src = r#"2014-01-01 open Assets:Cash
+broken line"#;
 
   let errors = parse_strict(src).expect_err("strict parse should fail");
   let first = &errors[0];
