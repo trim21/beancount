@@ -59,7 +59,7 @@ fn describe_pattern(expected: chumsky::error::RichPattern<'_, char>) -> String {
     RichPattern::Any => "any character".to_string(),
     RichPattern::SomethingElse => "something else".to_string(),
     RichPattern::EndOfInput => "end of input".to_string(),
-    other => format!("unexpected pattern: {other}"),
+    _ => "unknown pattern".to_string(),
   }
 }
 
@@ -103,7 +103,7 @@ fn summarize_expected<'a>(
     return None;
   }
 
-  // Limit the number of expected tokens we surface to keep messages concise.
+  // Limit the number of expected tokens we surface (five) to keep messages concise.
   const MAX_EXPECTED: usize = 5;
   if items.len() <= MAX_EXPECTED {
     Some(join_list(&items))
