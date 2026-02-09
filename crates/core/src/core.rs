@@ -1,4 +1,4 @@
-use beancount_parser::path_utils::resolve_path;
+use crate::path_utils::resolve_path;
 use beancount_parser::{ParseError, Position, ast};
 use chrono::NaiveDate;
 use ropey::Rope;

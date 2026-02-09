@@ -5,8 +5,6 @@
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 
 pub mod ast;
-pub mod path_utils;
-
 mod parser;
 mod utils;
 

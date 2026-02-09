@@ -6,6 +6,7 @@
 
 pub mod core;
 pub mod inference;
+pub mod path_utils;
 
 pub use crate::core::*;
 pub use beancount_parser::{Error, ParseError, Position, Result, ast};
