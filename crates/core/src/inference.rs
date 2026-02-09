@@ -230,21 +230,33 @@ fn resolve_price(
 /// Infer missing posting amounts for each transaction while preserving other directives.
 ///
 /// For each currency within a transaction, if exactly one posting amount is missing
-/// we balance that currency by assigning the opposite of the running total.
-/// If multiple postings are missing for the same currency or the transaction cannot
-/// balance, an `InferenceError` is returned.
+/// we balance that currency by assigning the opposite of the running total. We continue
+/// processing subsequent directives even if a transaction fails to infer, accumulating
+/// all `InferenceError`s. Transactions that fail inference are returned as
+/// `InferredDirective::Other` alongside the collected errors.
 pub fn infer_directives(
   directives: Vec<Directive>,
-) -> Result<Vec<InferredDirective>, InferenceError> {
-  directives
-    .into_iter()
-    .map(|directive| match directive {
+) -> (Vec<InferredDirective>, Vec<InferenceError>) {
+  let mut inferred = Vec::with_capacity(directives.len());
+  let mut errors = Vec::new();
+
+  for directive in directives {
+    match directive {
       Directive::Transaction(txn) => {
-        infer_transaction_postings(txn).map(InferredDirective::Transaction)
+        let original = Directive::Transaction(txn.clone());
+        match infer_transaction_postings(txn) {
+          Ok(txn) => inferred.push(InferredDirective::Transaction(txn)),
+          Err(err) => {
+            errors.push(err);
+            inferred.push(InferredDirective::Other(original));
+          }
+        }
       }
-      other => Ok(InferredDirective::Other(other)),
-    })
-    .collect()
+      other => inferred.push(InferredDirective::Other(other)),
+    }
+  }
+
+  (inferred, errors)
 }
 
 pub fn infer_transaction_postings(
@@ -546,7 +558,8 @@ mod tests {
     };
 
     let directives = vec![txn_with_postings(vec![posting(missing), posting(present)])];
-    let inferred = infer_directives(directives).expect("inference should succeed");
+    let (inferred, errors) = infer_directives(directives);
+    assert!(errors.is_empty());
 
     match &inferred[0] {
       InferredDirective::Transaction(txn) => {
@@ -572,9 +585,11 @@ mod tests {
       posting(missing_usd.clone()),
       posting(missing_usd),
     ])];
-    let err =
-      infer_directives(directives).expect_err("should fail with two missing amounts");
-    assert!(err.message.contains("cannot infer amounts"));
+    let (inferred, errors) = infer_directives(directives);
+    assert_eq!(errors.len(), 1, "expected one inference error");
+    assert!(errors[0].message.contains("cannot infer amounts"));
+
+    assert!(matches!(inferred[0], InferredDirective::Other(_)));
   }
 
   #[test]
@@ -585,7 +600,8 @@ mod tests {
     let food = posting_without_amount("Expenses:Food");
 
     let directives = vec![txn_with_postings(vec![cash, food])];
-    let inferred = infer_directives(directives).expect("inference should succeed");
+    let (inferred, errors) = infer_directives(directives);
+    assert!(errors.is_empty());
 
     let InferredDirective::Transaction(txn) = &inferred[0] else {
       panic!("expected transaction");
@@ -605,12 +621,13 @@ mod tests {
     food.account = "Expenses:Food".to_string();
 
     let directives = vec![txn_with_postings(vec![cash, food])];
-    let err = infer_directives(directives).expect_err("should fail unbalanced txn");
-
+    let (inferred, errors) = infer_directives(directives);
+    assert_eq!(errors.len(), 1, "should report unbalanced txn");
     assert!(matches!(
-      err.kind,
+      errors[0].kind,
       InferenceErrorKind::Unbalanced { ref currency, .. } if currency == "CNY"
     ));
+    assert!(matches!(inferred[0], InferredDirective::Other(_)));
   }
 
   #[test]
@@ -619,10 +636,14 @@ mod tests {
     let p2 = posting_without_amount("Assets:Cash");
 
     let directives = vec![txn_with_postings(vec![p1, p2])];
-    let err =
-      infer_directives(directives).expect_err("should fail with two missing amounts");
+    let (inferred, errors) = infer_directives(directives);
+    assert_eq!(errors.len(), 1, "should fail with two missing amounts");
 
-    assert!(matches!(err.kind, InferenceErrorKind::MultipleAutoPostings));
+    assert!(matches!(
+      errors[0].kind,
+      InferenceErrorKind::MultipleAutoPostings
+    ));
+    assert!(matches!(inferred[0], InferredDirective::Other(_)));
   }
 
   #[test]
@@ -647,7 +668,8 @@ mod tests {
       posting(eur_missing),
     ])];
 
-    let inferred = infer_directives(directives).expect("inference should succeed");
+    let (inferred, errors) = infer_directives(directives);
+    assert!(errors.is_empty());
     let InferredDirective::Transaction(txn) = &inferred[0] else {
       panic!("expected transaction");
     };
@@ -681,7 +703,8 @@ mod tests {
 
     let balancing = posting(literal_amount("-1", "USD"));
     let directives = vec![txn_with_postings(vec![p, balancing])];
-    let inferred = infer_directives(directives).expect("inference should succeed");
+    let (inferred, errors) = infer_directives(directives);
+    assert!(errors.is_empty());
     let InferredDirective::Transaction(txn) = &inferred[0] else {
       panic!("expected transaction");
     };
@@ -705,7 +728,8 @@ mod tests {
 
     let balancing = posting(literal_amount("-10", "USD"));
     let directives = vec![txn_with_postings(vec![p, balancing])];
-    let inferred = infer_directives(directives).expect("inference should succeed");
+    let (inferred, errors) = infer_directives(directives);
+    assert!(errors.is_empty());
     let InferredDirective::Transaction(txn) = &inferred[0] else {
       panic!("expected transaction");
     };
@@ -731,13 +755,14 @@ mod tests {
     let directives = crate::core::normalize_directives(&parsed, "test.beancount", source)
       .expect("normalize directives");
 
-    let err =
-      infer_directives(directives).expect_err("unbalanced transaction should be rejected");
+    let (inferred, errors) = infer_directives(directives);
+    assert_eq!(errors.len(), 1, "unbalanced transaction should be rejected");
 
     assert!(matches!(
-      err.kind,
+      errors[0].kind,
       InferenceErrorKind::Unbalanced { ref currency, .. } if currency == "CNY"
     ));
+    assert!(matches!(inferred[0], InferredDirective::Other(_)));
   }
 
   #[test]
@@ -752,8 +777,13 @@ mod tests {
     let directives = crate::core::normalize_directives(&parsed, "test.beancount", source)
       .expect("normalize directives");
 
-    let err = infer_directives(directives).expect_err("missing amounts should be rejected");
+    let (inferred, errors) = infer_directives(directives);
+    assert_eq!(errors.len(), 1, "missing amounts should be rejected");
 
-    assert!(matches!(err.kind, InferenceErrorKind::MultipleAutoPostings));
+    assert!(matches!(
+      errors[0].kind,
+      InferenceErrorKind::MultipleAutoPostings
+    ));
+    assert!(matches!(inferred[0], InferredDirective::Other(_)));
   }
 }
