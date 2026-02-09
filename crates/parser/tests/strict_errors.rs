@@ -9,6 +9,10 @@ fn strict_error_reports_position() {
 
   assert_eq!(first.line, 2);
   assert_eq!(first.column, 1);
+  assert!(
+    first.message.contains("expected"),
+    "strict error should include expected tokens"
+  );
   assert!(first.message.contains("found 'b'"));
 }
 
