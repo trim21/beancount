@@ -55,11 +55,12 @@ fn describe_pattern(expected: chumsky::error::RichPattern<'_, char>) -> String {
       MaybeRef::Val(ch) => describe_char(ch),
     },
     RichPattern::Label(label) => label.to_string(),
-    RichPattern::Identifier(ident) => ident.clone(),
+    RichPattern::Identifier(ident) => ident,
     RichPattern::Any => "any character".to_string(),
     RichPattern::SomethingElse => "something else".to_string(),
     RichPattern::EndOfInput => "end of input".to_string(),
-    _ => "unknown pattern".to_string(),
+    // `RichPattern` is non-exhaustive; surface any future variants explicitly.
+    other => format!("unknown pattern ({other})"),
   }
 }
 
