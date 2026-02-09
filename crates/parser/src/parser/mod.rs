@@ -107,9 +107,7 @@ fn summarize_expected<'a>(
   }
 
   // Limit the number of expected tokens we surface to keep messages concise.
-  if items.len() <= MAX_DISPLAYED_EXPECTED {
-    Some(join_list(&items))
-  } else {
+  if items.len() > MAX_DISPLAYED_EXPECTED {
     let remaining = items.len() - MAX_DISPLAYED_EXPECTED;
     let head = join_list(&items[..MAX_DISPLAYED_EXPECTED]);
     let suffix = if remaining == 1 {
@@ -118,6 +116,8 @@ fn summarize_expected<'a>(
       format!("{remaining} more")
     };
     Some(format!("{head}, and {suffix}"))
+  } else {
+    Some(join_list(&items))
   }
 }
 
@@ -145,6 +145,7 @@ fn strict_error_message(err: &RawStrictError<'_>) -> String {
 
 #[cfg(not(feature = "rich-errors"))]
 fn strict_error_message(err: &RawStrictError<'_>) -> String {
+  // Simple errors do not retain the set of expected tokens.
   let found = describe_found(err.found());
   format!("unexpected {found}")
 }
