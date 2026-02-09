@@ -1,6 +1,5 @@
 use beancount_core::{
-  BinaryOp, Directive, NumberExpr, normalize_directives,
-  normalize_directives_with_rope,
+  BinaryOp, Directive, NumberExpr, normalize_directives, normalize_directives_with_rope,
 };
 use beancount_parser::{ast, parse_lossy};
 use ropey::Rope;

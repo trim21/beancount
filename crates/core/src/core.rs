@@ -533,30 +533,28 @@ impl<'a> TryFrom<(ast::Directive<'a>, &Arc<String>, &Rope)> for Directive {
       ast::Directive::Open(open) => {
         Ok(Directive::Open(Open::try_from((open, filename, rope))?))
       }
-      ast::Directive::Close(close) => Ok(Directive::Close(Close::try_from((
-        close, filename, rope,
-      ))?)),
+      ast::Directive::Close(close) => {
+        Ok(Directive::Close(Close::try_from((close, filename, rope))?))
+      }
       ast::Directive::Balance(balance) => Ok(Directive::Balance(Balance::try_from((
         balance, filename, rope,
       ))?)),
-      ast::Directive::Pad(pad) => {
-        Ok(Directive::Pad(Pad::try_from((pad, filename, rope))?))
-      }
+      ast::Directive::Pad(pad) => Ok(Directive::Pad(Pad::try_from((pad, filename, rope))?)),
       ast::Directive::Transaction(txn) => Ok(Directive::Transaction(
         Transaction::try_from((txn, filename, rope))?,
       )),
-      ast::Directive::Commodity(cmdty) => Ok(Directive::Commodity(
-        Commodity::try_from((cmdty, filename, rope))?,
-      )),
-      ast::Directive::Price(price) => Ok(Directive::Price(Price::try_from((
-        price, filename, rope,
+      ast::Directive::Commodity(cmdty) => Ok(Directive::Commodity(Commodity::try_from((
+        cmdty, filename, rope,
       ))?)),
-      ast::Directive::Event(event) => Ok(Directive::Event(Event::try_from((
-        event, filename, rope,
-      ))?)),
-      ast::Directive::Query(query) => Ok(Directive::Query(Query::try_from((
-        query, filename, rope,
-      ))?)),
+      ast::Directive::Price(price) => {
+        Ok(Directive::Price(Price::try_from((price, filename, rope))?))
+      }
+      ast::Directive::Event(event) => {
+        Ok(Directive::Event(Event::try_from((event, filename, rope))?))
+      }
+      ast::Directive::Query(query) => {
+        Ok(Directive::Query(Query::try_from((query, filename, rope))?))
+      }
       ast::Directive::Note(note) => {
         Ok(Directive::Note(Note::try_from((note, filename, rope))?))
       }
@@ -566,36 +564,34 @@ impl<'a> TryFrom<(ast::Directive<'a>, &Arc<String>, &Rope)> for Directive {
       ast::Directive::Custom(custom) => Ok(Directive::Custom(Custom::try_from((
         custom, filename, rope,
       ))?)),
-      ast::Directive::Option(opt) => Ok(Directive::Option(OptionDirective::try_from(
-        (opt, filename, rope),
-      )?)),
+      ast::Directive::Option(opt) => Ok(Directive::Option(OptionDirective::try_from((
+        opt, filename, rope,
+      ))?)),
       ast::Directive::Include(include) => Ok(Directive::Include(Include::try_from((
         include, filename, rope,
       ))?)),
       ast::Directive::Plugin(plugin) => Ok(Directive::Plugin(Plugin::try_from((
         plugin, filename, rope,
       ))?)),
-      ast::Directive::PushTag(tag) => Ok(Directive::PushTag(TagDirective::try_from(
-        (tag, filename, rope),
-      )?)),
+      ast::Directive::PushTag(tag) => Ok(Directive::PushTag(TagDirective::try_from((
+        tag, filename, rope,
+      ))?)),
       ast::Directive::PopTag(tag) => Ok(Directive::PopTag(TagDirective::try_from((
         tag, filename, rope,
       ))?)),
       ast::Directive::PushMeta(pm) => Ok(Directive::PushMeta(PushMeta::try_from((
         pm, filename, rope,
       ))?)),
-      ast::Directive::PopMeta(pm) => Ok(Directive::PopMeta(PopMeta::try_from((
-        pm, filename, rope,
-      ))?)),
+      ast::Directive::PopMeta(pm) => {
+        Ok(Directive::PopMeta(PopMeta::try_from((pm, filename, rope))?))
+      }
       ast::Directive::Comment(comment) => Ok(Directive::Comment(Comment::try_from((
         comment, filename, rope,
       ))?)),
-      ast::Directive::Headline(headline) => Ok(Directive::Headline(
-        Headline::try_from((headline, filename, rope))?,
-      )),
-      ast::Directive::Raw(raw) => {
-        Ok(Directive::Raw(Raw::try_from((raw, filename, rope))?))
-      }
+      ast::Directive::Headline(headline) => Ok(Directive::Headline(Headline::try_from((
+        headline, filename, rope,
+      ))?)),
+      ast::Directive::Raw(raw) => Ok(Directive::Raw(Raw::try_from((raw, filename, rope))?)),
     }
   }
 }

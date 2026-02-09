@@ -10,13 +10,8 @@ mod utils;
 
 pub use parser::{parse_lossy, parse_strict, render_strict_error};
 
-#[deprecated(note = "use parse_lossy instead")]
-pub fn parse_str(input: &str) -> Vec<ast::Directive<'_>> {
-  parse_lossy(input)
-}
-
-use chumsky::prelude::*;
 use chumsky::error::Rich;
+use chumsky::prelude::*;
 use ropey::Rope;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

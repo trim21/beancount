@@ -2,9 +2,9 @@
 #![allow(clippy::large_enum_variant)]
 #![deny(clippy::unwrap_used, clippy::expect_used)]
 
+use beancount_core as core;
 use beancount_parser::ParseError;
 use beancount_parser::ast;
-use beancount_core as core;
 use beancount_parser::parse_lossy;
 use chrono::{Datelike, NaiveDate};
 use core::Directive;

@@ -9,11 +9,8 @@ pub mod inference;
 pub mod path_utils;
 
 pub use crate::core::*;
-pub use beancount_parser::{Error, ParseError, Position, Result, ast};
 pub use crate::inference::{
-  infer_directives,
+  InferredDirective, InferredPosting, InferredTransaction, infer_directives,
   infer_transaction_postings,
-  InferredDirective,
-  InferredPosting,
-  InferredTransaction,
 };
+pub use beancount_parser::{Error, ParseError, Position, Result, ast};

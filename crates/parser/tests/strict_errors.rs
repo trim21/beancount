@@ -3,11 +3,7 @@ use chumsky::error::Rich;
 
 #[test]
 fn strict_parser_reports_line_and_column() {
-  let input = [
-    "2010-01-01 open Assets:Cash",
-    "not-a-directive",
-  ]
-  .join("\n");
+  let input = ["2010-01-01 open Assets:Cash", "not-a-directive"].join("\n");
 
   let Err(errors) = parse_strict(&input) else {
     panic!("strict parser unexpectedly succeeded");

@@ -2,12 +2,12 @@ use std::collections::HashMap;
 
 use rust_decimal::Decimal;
 
+use crate::ParseError;
 use crate::core::{
-  number_expr_to_decimal, Amount, Directive, CostAmount, CostSpec, NumberExpr, Posting,
-  Transaction,
+  Amount, CostAmount, CostSpec, Directive, NumberExpr, Posting, Transaction,
+  number_expr_to_decimal,
 };
 use beancount_parser::ast;
-use crate::ParseError;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InferredDirective {
@@ -84,7 +84,10 @@ fn resolve_amount(amount: &Amount, meta: &ast::Meta) -> Result<InferredAmount, P
   })
 }
 
-fn resolve_cost_amount(amount: &CostAmount, meta: &ast::Meta) -> Result<CostAmount, ParseError> {
+fn resolve_cost_amount(
+  amount: &CostAmount,
+  meta: &ast::Meta,
+) -> Result<CostAmount, ParseError> {
   let per = amount
     .per
     .as_ref()
@@ -121,7 +124,10 @@ fn resolve_cost_amount(amount: &CostAmount, meta: &ast::Meta) -> Result<CostAmou
   })
 }
 
-fn resolve_cost_spec(cost_spec: &CostSpec, meta: &ast::Meta) -> Result<CostSpec, ParseError> {
+fn resolve_cost_spec(
+  cost_spec: &CostSpec,
+  meta: &ast::Meta,
+) -> Result<CostSpec, ParseError> {
   let amount = cost_spec
     .amount
     .as_ref()
@@ -202,11 +208,12 @@ pub fn infer_transaction_postings(
               .push(idx);
           }
           _ => {
-            let value = number_expr_to_decimal(&amount.number).map_err(|err| ParseError {
-              line: posting.meta.line,
-              column: posting.meta.column,
-              message: err.message,
-            })?;
+            let value =
+              number_expr_to_decimal(&amount.number).map_err(|err| ParseError {
+                line: posting.meta.line,
+                column: posting.meta.column,
+                message: err.message,
+              })?;
 
             currencies.entry(currency).or_default().sum += value;
           }
@@ -236,12 +243,15 @@ pub fn infer_transaction_postings(
         return Err(ParseError {
           line: txn.meta.line,
           column: txn.meta.column,
-          message: "posting is missing an amount; cannot infer without a currency".to_string(),
+          message: "posting is missing an amount; cannot infer without a currency"
+            .to_string(),
         });
       }
     };
 
-    let state = currencies.get_mut(&currency).expect("currency key just extracted");
+    let state = currencies
+      .get_mut(&currency)
+      .expect("currency key just extracted");
     if !state.missing_indices.is_empty() {
       return Err(ParseError {
         line: txn.meta.line,
@@ -276,8 +286,7 @@ pub fn infer_transaction_postings(
           column: txn.meta.column,
           message: format!(
             "transaction is not balanced for currency {}: residual {}",
-            currency,
-            state.sum,
+            currency, state.sum,
           ),
         });
       }
@@ -354,9 +363,7 @@ pub fn infer_transaction_postings(
       .or_default() += posting.amount.number;
   }
 
-  if let Some((currency, residual)) = final_sums
-    .into_iter()
-    .find(|(_, sum)| !sum.is_zero())
+  if let Some((currency, residual)) = final_sums.into_iter().find(|(_, sum)| !sum.is_zero())
   {
     return Err(ParseError {
       line: txn.meta.line,
@@ -385,7 +392,7 @@ pub fn infer_transaction_postings(
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::core::{Amount, Directive, CostAmount, CostSpec, NumberExpr, Posting};
+  use crate::core::{Amount, CostAmount, CostSpec, Directive, NumberExpr, Posting};
   use std::sync::Arc;
 
   fn meta() -> ast::Meta {
@@ -476,8 +483,12 @@ mod tests {
       currency: Some("USD".to_string()),
     };
 
-    let directives = vec![txn_with_postings(vec![posting(missing_usd.clone()), posting(missing_usd)])];
-    let err = infer_directives(directives).expect_err("should fail with two missing amounts");
+    let directives = vec![txn_with_postings(vec![
+      posting(missing_usd.clone()),
+      posting(missing_usd),
+    ])];
+    let err =
+      infer_directives(directives).expect_err("should fail with two missing amounts");
     assert!(err.message.contains("cannot infer amounts"));
   }
 
@@ -511,9 +522,11 @@ mod tests {
     let directives = vec![txn_with_postings(vec![cash, food])];
     let err = infer_directives(directives).expect_err("should fail unbalanced txn");
 
-    assert!(err
-      .message
-      .contains("transaction is not balanced for currency CNY"));
+    assert!(
+      err
+        .message
+        .contains("transaction is not balanced for currency CNY")
+    );
   }
 
   #[test]
@@ -522,11 +535,10 @@ mod tests {
     let p2 = posting_without_amount("Assets:Cash");
 
     let directives = vec![txn_with_postings(vec![p1, p2])];
-    let err = infer_directives(directives).expect_err("should fail with two missing amounts");
+    let err =
+      infer_directives(directives).expect_err("should fail with two missing amounts");
 
-    assert!(err
-      .message
-      .contains("missing an amount and currency"));
+    assert!(err.message.contains("missing an amount and currency"));
   }
 
   #[test]
@@ -589,7 +601,10 @@ mod tests {
     let InferredDirective::Transaction(txn) = &inferred[0] else {
       panic!("expected transaction");
     };
-    let cost_spec = txn.postings[0].cost_spec.as_ref().expect("cost spec present");
+    let cost_spec = txn.postings[0]
+      .cost_spec
+      .as_ref()
+      .expect("cost spec present");
     let amount = cost_spec.amount.as_ref().expect("cost amount present");
 
     assert!(matches!(amount.per, Some(NumberExpr::Literal(ref n)) if n == "1.23"));
@@ -628,12 +643,12 @@ mod tests {
   Expenses:Food  -10 CNY
 "#;
 
-    let parsed = beancount_parser::parse_lossy(source);
+    let parsed = beancount_parser::parse_strict(source).unwrap();
     let directives = crate::core::normalize_directives(&parsed, "test.beancount", source)
       .expect("normalize directives");
 
-    let err = infer_directives(directives)
-      .expect_err("unbalanced transaction should be rejected");
+    let err =
+      infer_directives(directives).expect_err("unbalanced transaction should be rejected");
 
     assert!(
       err

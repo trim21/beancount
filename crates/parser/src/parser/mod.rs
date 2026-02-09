@@ -110,8 +110,6 @@ fn declarations_parser_strict<'src>()
     .collect::<Vec<_>>()
 }
 
-
-
 pub fn parse_lossy<'a>(source: &'a str) -> Vec<ast::Directive<'a>> {
   declarations_parser()
     .then_ignore(end())
@@ -125,7 +123,6 @@ pub fn parse_lossy<'a>(source: &'a str) -> Vec<ast::Directive<'a>> {
 pub fn parse_strict<'a>(
   source: &'a str,
 ) -> Result<Vec<ast::Directive<'a>>, Vec<StrictError<'a>>> {
-
   declarations_parser_strict()
     .then_ignore(end())
     .parse(source)
@@ -147,6 +144,8 @@ pub fn render_strict_error(
     .with_message(&message)
     .with_label(Label::new((source_id, span)).with_message(message));
 
-  let _ = report.finish().write((source_id, Source::from(source)), &mut out);
+  let _ = report
+    .finish()
+    .write((source_id, Source::from(source)), &mut out);
   String::from_utf8_lossy(&out).into_owned()
 }

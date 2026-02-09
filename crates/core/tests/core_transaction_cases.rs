@@ -1,7 +1,7 @@
 #[path = "core_common.rs"]
 mod common;
-use beancount_parser::ast::{Directive, PriceOperator};
 use beancount_core::{KeyValueValue, NumberExpr, Transaction};
+use beancount_parser::ast::{Directive, PriceOperator};
 use common::{lines, parse_as};
 
 #[test]
