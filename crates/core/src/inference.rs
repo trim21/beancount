@@ -4,8 +4,7 @@ use rust_decimal::Decimal;
 
 use crate::ParseError;
 use crate::core::{
-  Amount, CostAmount, CostSpec, Directive, NumberExpr, Posting, Transaction,
-  number_expr_to_decimal,
+  Amount, CostAmount, CostSpec, Directive, NumberExpr, Transaction, number_expr_to_decimal,
 };
 use beancount_parser::ast;
 
@@ -13,6 +12,52 @@ use beancount_parser::ast;
 pub enum InferredDirective {
   Transaction(InferredTransaction),
   Other(Directive),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum InferenceErrorKind {
+  NumberEval { message: String },
+  MissingCurrency,
+  MissingPostingAmount,
+  MissingPriceNumber,
+  MultipleAutoPostings,
+  MultipleMissingInCurrency { currency: String, count: usize },
+  MissingCurrencyForAutoPosting,
+  Unbalanced { currency: String, residual: Decimal },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InferenceError {
+  pub kind: InferenceErrorKind,
+  pub span: ast::Span,
+  pub line: usize,
+  pub column: usize,
+  pub message: String,
+}
+
+impl InferenceError {
+  fn new(
+    kind: InferenceErrorKind,
+    meta: &ast::Meta,
+    span: ast::Span,
+    message: String,
+  ) -> Self {
+    Self {
+      kind,
+      span,
+      line: meta.line,
+      column: meta.column,
+      message,
+    }
+  }
+
+  pub fn into_parse_error(self) -> ParseError {
+    ParseError {
+      line: self.line,
+      column: self.column,
+      message: self.message,
+    }
+  }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -56,25 +101,38 @@ struct CurrencyState {
   missing_indices: Vec<usize>,
 }
 
-fn resolve_amount(amount: &Amount, meta: &ast::Meta) -> Result<InferredAmount, ParseError> {
+fn resolve_amount(
+  amount: &Amount,
+  meta: &ast::Meta,
+  span: ast::Span,
+) -> Result<InferredAmount, InferenceError> {
   if matches!(amount.number, NumberExpr::Missing) {
-    return Err(ParseError {
-      line: meta.line,
-      column: meta.column,
-      message: "posting amount missing after inference".to_string(),
-    });
+    return Err(InferenceError::new(
+      InferenceErrorKind::MissingPostingAmount,
+      meta,
+      span,
+      "posting amount missing after inference".to_string(),
+    ));
   }
 
-  let dec = number_expr_to_decimal(&amount.number).map_err(|err| ParseError {
-    line: meta.line,
-    column: meta.column,
-    message: err.message,
+  let dec = number_expr_to_decimal(&amount.number).map_err(|err| {
+    InferenceError::new(
+      InferenceErrorKind::NumberEval {
+        message: err.message.clone(),
+      },
+      meta,
+      span,
+      err.message,
+    )
   })?;
   let normalized = dec.normalize();
-  let currency = amount.currency.clone().ok_or_else(|| ParseError {
-    line: meta.line,
-    column: meta.column,
-    message: "posting amount is missing a currency".to_string(),
+  let currency = amount.currency.clone().ok_or_else(|| {
+    InferenceError::new(
+      InferenceErrorKind::MissingCurrency,
+      meta,
+      span,
+      "posting amount is missing a currency".to_string(),
+    )
   })?;
 
   Ok(InferredAmount {
@@ -87,7 +145,8 @@ fn resolve_amount(amount: &Amount, meta: &ast::Meta) -> Result<InferredAmount, P
 fn resolve_cost_amount(
   amount: &CostAmount,
   meta: &ast::Meta,
-) -> Result<CostAmount, ParseError> {
+  span: ast::Span,
+) -> Result<CostAmount, InferenceError> {
   let per = amount
     .per
     .as_ref()
@@ -95,10 +154,15 @@ fn resolve_cost_amount(
       NumberExpr::Missing => Ok(NumberExpr::Missing),
       _ => number_expr_to_decimal(n)
         .map(|d| NumberExpr::Literal(d.normalize().to_string()))
-        .map_err(|err| ParseError {
-          line: meta.line,
-          column: meta.column,
-          message: err.message,
+        .map_err(|err| {
+          InferenceError::new(
+            InferenceErrorKind::NumberEval {
+              message: err.message.clone(),
+            },
+            meta,
+            span,
+            err.message,
+          )
         }),
     })
     .transpose()?;
@@ -109,10 +173,15 @@ fn resolve_cost_amount(
       NumberExpr::Missing => Ok(NumberExpr::Missing),
       _ => number_expr_to_decimal(n)
         .map(|d| NumberExpr::Literal(d.normalize().to_string()))
-        .map_err(|err| ParseError {
-          line: meta.line,
-          column: meta.column,
-          message: err.message,
+        .map_err(|err| {
+          InferenceError::new(
+            InferenceErrorKind::NumberEval {
+              message: err.message.clone(),
+            },
+            meta,
+            span,
+            err.message,
+          )
         }),
     })
     .transpose()?;
@@ -127,11 +196,12 @@ fn resolve_cost_amount(
 fn resolve_cost_spec(
   cost_spec: &CostSpec,
   meta: &ast::Meta,
-) -> Result<CostSpec, ParseError> {
+  span: ast::Span,
+) -> Result<CostSpec, InferenceError> {
   let amount = cost_spec
     .amount
     .as_ref()
-    .map(|a| resolve_cost_amount(a, meta))
+    .map(|a| resolve_cost_amount(a, meta, span))
     .transpose()?;
 
   Ok(CostSpec {
@@ -147,18 +217,20 @@ fn resolve_cost_spec(
 fn resolve_price(
   price: &Option<Amount>,
   meta: &ast::Meta,
-) -> Result<Option<InferredAmount>, ParseError> {
+  span: ast::Span,
+) -> Result<Option<InferredAmount>, InferenceError> {
   match price {
     None => Ok(None),
     Some(amount) => {
       if matches!(amount.number, NumberExpr::Missing) {
-        Err(ParseError {
-          line: meta.line,
-          column: meta.column,
-          message: "price number missing after inference".to_string(),
-        })
+        Err(InferenceError::new(
+          InferenceErrorKind::MissingPriceNumber,
+          meta,
+          span,
+          "price number missing after inference".to_string(),
+        ))
       } else {
-        Ok(Some(resolve_amount(amount, meta)?))
+        Ok(Some(resolve_amount(amount, meta, span)?))
       }
     }
   }
@@ -173,11 +245,17 @@ fn resolve_price(
 pub fn infer_directives(
   directives: Vec<Directive>,
 ) -> Result<Vec<InferredDirective>, ParseError> {
+  infer_directives_detailed(directives).map_err(InferenceError::into_parse_error)
+}
+
+pub fn infer_directives_detailed(
+  directives: Vec<Directive>,
+) -> Result<Vec<InferredDirective>, InferenceError> {
   directives
     .into_iter()
     .map(|directive| match directive {
       Directive::Transaction(txn) => {
-        infer_transaction_postings(txn).map(InferredDirective::Transaction)
+        infer_transaction_postings_detailed(txn).map(InferredDirective::Transaction)
       }
       other => Ok(InferredDirective::Other(other)),
     })
@@ -185,18 +263,27 @@ pub fn infer_directives(
 }
 
 pub fn infer_transaction_postings(
-  mut txn: Transaction,
+  txn: Transaction,
 ) -> Result<InferredTransaction, ParseError> {
+  infer_transaction_postings_detailed(txn).map_err(InferenceError::into_parse_error)
+}
+
+pub fn infer_transaction_postings_detailed(
+  mut txn: Transaction,
+) -> Result<InferredTransaction, InferenceError> {
   let mut currencies: HashMap<String, CurrencyState> = HashMap::new();
   let mut missing_without_amount: Vec<usize> = Vec::new();
 
   for (idx, posting) in txn.postings.iter().enumerate() {
     match &posting.amount {
       Some(amount) => {
-        let currency = amount.currency.clone().ok_or_else(|| ParseError {
-          line: posting.meta.line,
-          column: posting.meta.column,
-          message: "posting amount is missing a currency".to_string(),
+        let currency = amount.currency.clone().ok_or_else(|| {
+          InferenceError::new(
+            InferenceErrorKind::MissingCurrency,
+            &posting.meta,
+            posting.span,
+            "posting amount is missing a currency".to_string(),
+          )
         })?;
 
         match &amount.number {
@@ -208,12 +295,16 @@ pub fn infer_transaction_postings(
               .push(idx);
           }
           _ => {
-            let value =
-              number_expr_to_decimal(&amount.number).map_err(|err| ParseError {
-                line: posting.meta.line,
-                column: posting.meta.column,
-                message: err.message,
-              })?;
+            let value = number_expr_to_decimal(&amount.number).map_err(|err| {
+              InferenceError::new(
+                InferenceErrorKind::NumberEval {
+                  message: err.message.clone(),
+                },
+                &posting.meta,
+                posting.span,
+                err.message,
+              )
+            })?;
 
             currencies.entry(currency).or_default().sum += value;
           }
@@ -226,47 +317,51 @@ pub fn infer_transaction_postings(
   }
 
   if missing_without_amount.len() > 1 {
-    return Err(ParseError {
-      line: txn.meta.line,
-      column: txn.meta.column,
-      message: format!(
-        "cannot infer amounts: {} postings are missing an amount and currency",
-        missing_without_amount.len()
-      ),
-    });
+    return Err(InferenceError::new(
+      InferenceErrorKind::MultipleAutoPostings,
+      &txn.meta,
+      txn.span,
+      "You may not have more than one auto-posting per currency".to_string(),
+    ));
   }
 
   if let Some(&missing_idx) = missing_without_amount.first() {
     let currency = match currencies.keys().next() {
       Some(c) if currencies.len() == 1 => c.clone(),
       _ => {
-        return Err(ParseError {
-          line: txn.meta.line,
-          column: txn.meta.column,
-          message: "posting is missing an amount; cannot infer without a currency"
-            .to_string(),
-        });
+        return Err(InferenceError::new(
+          InferenceErrorKind::MissingCurrencyForAutoPosting,
+          &txn.meta,
+          txn.span,
+          "posting is missing an amount; cannot infer without a currency".to_string(),
+        ));
       }
     };
 
-    let state = currencies
-      .get_mut(&currency)
-      .expect("currency key just extracted");
+    let state = match currencies.get_mut(&currency) {
+      Some(state) => state,
+      None => unreachable!("inference invariant violated: currency state missing"),
+    };
     if !state.missing_indices.is_empty() {
-      return Err(ParseError {
-        line: txn.meta.line,
-        column: txn.meta.column,
-        message: "cannot infer amounts: multiple postings are missing".to_string(),
-      });
+      return Err(InferenceError::new(
+        InferenceErrorKind::MultipleMissingInCurrency {
+          currency: currency.clone(),
+          count: state.missing_indices.len() + 1,
+        },
+        &txn.meta,
+        txn.span,
+        "cannot infer amounts: multiple postings are missing".to_string(),
+      ));
     }
 
     let inferred = (-state.sum).normalize();
     let amount_str = inferred.to_string();
 
-    let target: &mut Posting = txn
-      .postings
-      .get_mut(missing_idx)
-      .expect("missing index recorded during scan");
+    debug_assert!(
+      missing_idx < txn.postings.len(),
+      "inference invariant violated: missing posting index"
+    );
+    let target = &mut txn.postings[missing_idx];
 
     target.amount = Some(Amount {
       raw: amount_str.clone(),
@@ -281,37 +376,43 @@ pub fn infer_transaction_postings(
   for (currency, state) in currencies {
     if state.missing_indices.is_empty() {
       if !state.sum.is_zero() {
-        return Err(ParseError {
-          line: txn.meta.line,
-          column: txn.meta.column,
-          message: format!(
-            "transaction is not balanced for currency {}: residual {}",
-            currency, state.sum,
-          ),
-        });
+        return Err(InferenceError::new(
+          InferenceErrorKind::Unbalanced {
+            currency: currency.clone(),
+            residual: state.sum,
+          },
+          &txn.meta,
+          txn.span,
+          format!("Transaction does not balance: ({} {})", state.sum, currency,),
+        ));
       }
       continue;
     }
 
     if state.missing_indices.len() > 1 {
-      return Err(ParseError {
-        line: txn.meta.line,
-        column: txn.meta.column,
-        message: format!(
+      return Err(InferenceError::new(
+        InferenceErrorKind::MultipleMissingInCurrency {
+          currency: currency.clone(),
+          count: state.missing_indices.len(),
+        },
+        &txn.meta,
+        txn.span,
+        format!(
           "cannot infer amounts: {} postings are missing in currency {currency}",
           state.missing_indices.len()
         ),
-      });
+      ));
     }
 
     let missing_idx = state.missing_indices[0];
     let inferred = (-state.sum).normalize();
     let amount_str = inferred.to_string();
 
-    let target: &mut Posting = txn
-      .postings
-      .get_mut(missing_idx)
-      .expect("missing index recorded during scan");
+    debug_assert!(
+      missing_idx < txn.postings.len(),
+      "inference invariant violated: missing posting index"
+    );
+    let target = &mut txn.postings[missing_idx];
 
     target.amount = Some(Amount {
       raw: amount_str.clone(),
@@ -325,13 +426,13 @@ pub fn infer_transaction_postings(
     .into_iter()
     .map(|p| match p.amount {
       Some(amount) if !matches!(amount.number, NumberExpr::Missing) => {
-        let amount = resolve_amount(&amount, &p.meta)?;
+        let amount = resolve_amount(&amount, &p.meta, p.span)?;
         let cost_spec = p
           .cost_spec
           .as_ref()
-          .map(|c| resolve_cost_spec(c, &p.meta))
+          .map(|c| resolve_cost_spec(c, &p.meta, p.span))
           .transpose()?;
-        let price_annotation = resolve_price(&p.price_annotation, &p.meta)?;
+        let price_annotation = resolve_price(&p.price_annotation, &p.meta, p.span)?;
 
         Ok(InferredPosting {
           meta: p.meta,
@@ -346,11 +447,12 @@ pub fn infer_transaction_postings(
           key_values: p.key_values,
         })
       }
-      _ => Err(ParseError {
-        line: p.meta.line,
-        column: p.meta.column,
-        message: "posting amount missing after inference".to_string(),
-      }),
+      _ => Err(InferenceError::new(
+        InferenceErrorKind::MissingPostingAmount,
+        &p.meta,
+        p.span,
+        "posting amount missing after inference".to_string(),
+      )),
     })
     .collect::<Result<Vec<_>, _>>()?;
 
@@ -365,14 +467,18 @@ pub fn infer_transaction_postings(
 
   if let Some((currency, residual)) = final_sums.into_iter().find(|(_, sum)| !sum.is_zero())
   {
-    return Err(ParseError {
-      line: txn.meta.line,
-      column: txn.meta.column,
-      message: format!(
+    return Err(InferenceError::new(
+      InferenceErrorKind::Unbalanced {
+        currency: currency.clone(),
+        residual,
+      },
+      &txn.meta,
+      txn.span,
+      format!(
         "transaction is not balanced for currency {}: residual {}",
         currency, residual
       ),
-    });
+    ));
   }
 
   Ok(InferredTransaction {
@@ -520,13 +626,13 @@ mod tests {
     food.account = "Expenses:Food".to_string();
 
     let directives = vec![txn_with_postings(vec![cash, food])];
-    let err = infer_directives(directives).expect_err("should fail unbalanced txn");
+    let err =
+      infer_directives_detailed(directives).expect_err("should fail unbalanced txn");
 
-    assert!(
-      err
-        .message
-        .contains("transaction is not balanced for currency CNY")
-    );
+    assert!(matches!(
+      err.kind,
+      InferenceErrorKind::Unbalanced { ref currency, .. } if currency == "CNY"
+    ));
   }
 
   #[test]
@@ -535,10 +641,10 @@ mod tests {
     let p2 = posting_without_amount("Assets:Cash");
 
     let directives = vec![txn_with_postings(vec![p1, p2])];
-    let err =
-      infer_directives(directives).expect_err("should fail with two missing amounts");
+    let err = infer_directives_detailed(directives)
+      .expect_err("should fail with two missing amounts");
 
-    assert!(err.message.contains("missing an amount and currency"));
+    assert!(matches!(err.kind, InferenceErrorKind::MultipleAutoPostings));
   }
 
   #[test]
@@ -647,15 +753,30 @@ mod tests {
     let directives = crate::core::normalize_directives(&parsed, "test.beancount", source)
       .expect("normalize directives");
 
-    let err =
-      infer_directives(directives).expect_err("unbalanced transaction should be rejected");
+    let err = infer_directives_detailed(directives)
+      .expect_err("unbalanced transaction should be rejected");
 
-    assert!(
-      err
-        .message
-        .contains("transaction is not balanced for currency CNY"),
-      "unexpected error: {}",
-      err.message
-    );
+    assert!(matches!(
+      err.kind,
+      InferenceErrorKind::Unbalanced { ref currency, .. } if currency == "CNY"
+    ));
+  }
+
+  #[test]
+  fn fails_when_all_postings_missing_amounts() {
+    let source = r#"
+2020-05-05 * "馄饨"
+  Assets:Cash
+  Expenses:Food
+"#;
+
+    let parsed = beancount_parser::parse_strict(source).unwrap();
+    let directives = crate::core::normalize_directives(&parsed, "test.beancount", source)
+      .expect("normalize directives");
+
+    let err = infer_directives_detailed(directives)
+      .expect_err("missing amounts should be rejected");
+
+    assert!(matches!(err.kind, InferenceErrorKind::MultipleAutoPostings));
   }
 }

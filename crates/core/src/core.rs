@@ -369,8 +369,9 @@ pub enum BinaryOp {
   Div,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum NumberExpr {
+  #[default]
   Missing,
   Literal(String),
   Binary {
@@ -378,12 +379,6 @@ pub enum NumberExpr {
     op: BinaryOp,
     right: Box<NumberExpr>,
   },
-}
-
-impl Default for NumberExpr {
-  fn default() -> Self {
-    NumberExpr::Missing
-  }
 }
 
 impl From<ast::BinaryOp> for BinaryOp {
