@@ -345,6 +345,29 @@ pub fn infer_transaction_postings(
     })
     .collect::<Result<Vec<_>, _>>()?;
 
+  // Re-validate balance using the resolved, normalized amounts to catch any
+  // residual drift introduced during inference or normalization steps.
+  let mut final_sums: HashMap<String, Decimal> = HashMap::new();
+  for posting in &postings {
+    *final_sums
+      .entry(posting.amount.currency.clone())
+      .or_default() += posting.amount.number;
+  }
+
+  if let Some((currency, residual)) = final_sums
+    .into_iter()
+    .find(|(_, sum)| !sum.is_zero())
+  {
+    return Err(ParseError {
+      line: txn.meta.line,
+      column: txn.meta.column,
+      message: format!(
+        "transaction is not balanced for currency {}: residual {}",
+        currency, residual
+      ),
+    });
+  }
+
   Ok(InferredTransaction {
     meta: txn.meta,
     span: txn.span,
