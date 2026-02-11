@@ -657,7 +657,7 @@ pub struct CostAmount {
 pub struct CostSpec {
   pub raw: String,
   pub amount: Option<CostAmount>,
-  pub date: Option<String>,
+  pub date: Option<NaiveDate>,
   pub label: Option<String>,
   pub merge: bool,
   pub is_total: bool,
@@ -667,7 +667,7 @@ pub struct CostSpec {
 pub struct Cost {
   pub number: NumberExpr,
   pub currency: String,
-  pub date: String,
+  pub date: NaiveDate,
   pub label: Option<String>,
 }
 
@@ -1288,7 +1288,10 @@ impl<'a> TryFrom<(ast::CostSpec<'a>, &ast::Meta)> for CostSpec {
     Ok(Self {
       raw: cost.raw.content.to_string(),
       amount: cost.amount.map(CostAmount::try_from).transpose()?,
-      date: cost.date.map(|d| d.content.to_string()),
+      date: cost
+        .date
+        .map(|d| parse_date_value(d.content, meta, "cost date"))
+        .transpose()?,
       label: cost
         .label
         .map(|l| unquote_json(l.content, meta, "cost label"))

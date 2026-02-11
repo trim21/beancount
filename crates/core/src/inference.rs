@@ -199,7 +199,7 @@ fn resolve_cost_spec(
   Ok(CostSpec {
     amount,
     raw: cost_spec.raw.clone(),
-    date: cost_spec.date.clone(),
+    date: cost_spec.date,
     label: cost_spec.label.clone(),
     merge: cost_spec.merge,
     is_total: cost_spec.is_total,

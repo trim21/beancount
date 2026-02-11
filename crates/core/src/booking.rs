@@ -540,11 +540,7 @@ pub(crate) fn book_directives_with_state_and_checkpoints(
             continue;
           };
 
-          let cost_date = cost_spec
-            .date
-            .as_deref()
-            .map(|d| d.to_string())
-            .unwrap_or_else(|| txn.date.format("%Y-%m-%d").to_string());
+          let cost_date = cost_spec.date.unwrap_or(txn.date);
 
           posting.cost = Some(Cost {
             number: NumberExpr::Literal(cost_number.to_string()),
@@ -663,7 +659,7 @@ pub(crate) fn book_directives_with_state_and_checkpoints(
             posting.cost = Some(Cost {
               number: NumberExpr::Literal(per_unit.to_string()),
               currency: curr,
-              date: txn.date.format("%Y-%m-%d").to_string(),
+              date: txn.date,
               label: None,
             });
             posting.cost_spec = None;

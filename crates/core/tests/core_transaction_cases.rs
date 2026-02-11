@@ -2,6 +2,7 @@
 mod common;
 use beancount_core::{KeyValueValue, NumberExpr, Transaction};
 use beancount_parser::ast::{Directive, PriceOperator};
+use chrono::NaiveDate;
 use common::{lines, parse_as};
 
 #[test]
@@ -32,7 +33,7 @@ fn transaction_directive_with_postings() {
   assert!(matches!(p1.price_operator, Some(PriceOperator::PerUnit)));
   let cost1 = p1.cost_spec.as_ref().expect("p1 cost");
   assert!(cost1.raw.contains('*'));
-  assert_eq!(cost1.date.as_deref(), Some("2011-02-02"));
+  assert_eq!(cost1.date, NaiveDate::from_ymd_opt(2011, 2, 2));
   assert_eq!(cost1.label, None);
   let cost1_amount = cost1.amount.as_ref().expect("p1 cost amount");
   assert!(matches!(cost1_amount.per, Some(NumberExpr::Literal(ref n)) if n == "100"));

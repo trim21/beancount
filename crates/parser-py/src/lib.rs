@@ -1285,8 +1285,8 @@ fn cost_spec_to_py(
 
   let date = cost_spec
     .date
-    .as_deref()
-    .map(|d| py_date(py, d))
+    .as_ref()
+    .map(|d| py_date_from_naive(py, d))
     .transpose()?
     .unwrap_or_else(|| py.None());
   let label = cost_spec
@@ -1340,7 +1340,7 @@ fn convert_posting(
       Some(cost.currency.as_str()),
     )?;
     let number = py_decimal(py, cache, &cost.number)?;
-    let date = py_date(py, &cost.date)?;
+    let date = py_date_from_naive(py, &cost.date)?;
     let label = cost
       .label
       .as_deref()
