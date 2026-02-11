@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import argparse
 
-from beancount.parser import _parser_rust
+from beancount.parser import _rust
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -24,7 +24,7 @@ def main(argv: list[str] | None = None) -> int:
 
     args = parser.parse_args(argv)
 
-    entries, load_errors, parse_errors, booking_errors = _parser_rust.check_file_rust(
+    entries, load_errors, parse_errors, booking_errors = _rust.check_file_rust(
         args.filename
     )
     total_errors = load_errors + parse_errors + booking_errors

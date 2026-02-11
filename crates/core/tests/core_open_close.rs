@@ -1,6 +1,7 @@
 #[path = "core_common.rs"]
 mod common;
 use beancount_core::{Close, KeyValue, KeyValueValue, Open};
+use chrono::NaiveDate;
 use common::{lines, parse_as};
 use smallvec::smallvec;
 
@@ -30,7 +31,7 @@ fn open_directive_with_metadata() {
   };
 
   let expected = Open {
-    date: "2010-01-01".into(),
+    date: NaiveDate::from_ymd_opt(2010, 1, 1).unwrap(),
     account: "Assets:Cash".into(),
     currencies: smallvec!["USD".into()],
     meta: open.meta.clone(),
@@ -50,7 +51,7 @@ fn close_directive() {
   let close: Close = parse_as(&input, "book.bean");
 
   let expected = Close {
-    date: "2010-04-01".into(),
+    date: NaiveDate::from_ymd_opt(2010, 4, 1).unwrap(),
     account: "Assets:Cash".into(),
     meta: close.meta.clone(),
     span: close.span,

@@ -5,12 +5,19 @@ from typing import Tuple
 
 __version__: str
 
-__all__ = ["__version__", "build_options_map", "load_file", "parse_string"]
+__all__ = [
+    "__version__",
+    "build_options_map",
+    "check_file_rust",
+    "load_file",
+    "parse_string",
+]
 
 def load_file(filename: str) -> Tuple[List[Any], List[Any], Dict[str, Any]]: ...
 def parse_string(
     content: str, filename: str | None = ...
 ) -> Tuple[List[Any], List[Any], Dict[str, Any]]: ...
+def check_file_rust(filename: str) -> Tuple[int, int, int, int]: ...
 def load_file_and_book(filename: str) -> Tuple[List[Any], List[Any], Dict[str, Any]]: ...
 def load_string_and_book(
     content: str, filename: str = ...

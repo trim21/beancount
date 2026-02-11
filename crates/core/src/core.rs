@@ -69,11 +69,11 @@ pub struct Raw {
   pub text: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Open {
   pub meta: ast::Meta,
   pub span: ast::Span,
-  pub date: String,
+  pub date: NaiveDate,
   pub account: String,
   pub currencies: SmallStrVec,
   pub opt_booking: Option<String>,
@@ -81,21 +81,21 @@ pub struct Open {
   pub key_values: SmallKeyValues,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Close {
   pub meta: ast::Meta,
   pub span: ast::Span,
-  pub date: String,
+  pub date: NaiveDate,
   pub account: String,
   pub comment: Option<String>,
   pub key_values: SmallKeyValues,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Balance {
   pub meta: ast::Meta,
   pub span: ast::Span,
-  pub date: String,
+  pub date: NaiveDate,
   pub account: String,
   pub amount: Amount,
   pub tolerance: Option<String>,
@@ -103,22 +103,22 @@ pub struct Balance {
   pub key_values: SmallKeyValues,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Pad {
   pub meta: ast::Meta,
   pub span: ast::Span,
-  pub date: String,
+  pub date: NaiveDate,
   pub account: String,
   pub from_account: String,
   pub comment: Option<String>,
   pub key_values: SmallKeyValues,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Transaction {
   pub meta: ast::Meta,
   pub span: ast::Span,
-  pub date: String,
+  pub date: NaiveDate,
   pub txn: Option<String>,
   pub payee: Option<String>,
   pub narration: Option<String>,
@@ -144,65 +144,65 @@ pub struct Posting {
   pub key_values: SmallKeyValues,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Commodity {
   pub meta: ast::Meta,
   pub span: ast::Span,
-  pub date: String,
+  pub date: NaiveDate,
   pub currency: String,
   pub comment: Option<String>,
   pub key_values: SmallKeyValues,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Price {
   pub meta: ast::Meta,
   pub span: ast::Span,
-  pub date: String,
+  pub date: NaiveDate,
   pub currency: String,
   pub amount: Amount,
   pub comment: Option<String>,
   pub key_values: SmallKeyValues,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Event {
   pub meta: ast::Meta,
   pub span: ast::Span,
-  pub date: String,
+  pub date: NaiveDate,
   pub event_type: String,
   pub desc: String,
   pub comment: Option<String>,
   pub key_values: SmallKeyValues,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Query {
   pub meta: ast::Meta,
   pub span: ast::Span,
-  pub date: String,
+  pub date: NaiveDate,
   pub name: String,
   pub query: String,
   pub comment: Option<String>,
   pub key_values: SmallKeyValues,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Note {
   pub meta: ast::Meta,
   pub span: ast::Span,
-  pub date: String,
+  pub date: NaiveDate,
   pub account: String,
   pub note: String,
   pub comment: Option<String>,
   pub key_values: SmallKeyValues,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Document {
   pub meta: ast::Meta,
   pub span: ast::Span,
-  pub date: String,
+  pub date: NaiveDate,
   pub account: String,
   pub filename: String,
   pub tags_links: Option<String>,
@@ -212,11 +212,11 @@ pub struct Document {
   pub key_values: SmallKeyValues,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Custom {
   pub meta: ast::Meta,
   pub span: ast::Span,
-  pub date: String,
+  pub date: NaiveDate,
   pub name: String,
   pub values: SmallCustomValues,
   pub comment: Option<String>,
@@ -231,6 +231,185 @@ pub enum CustomValue {
   Amount(Amount),
   Number(NumberExpr),
   Account(String),
+}
+
+fn default_date() -> NaiveDate {
+  NaiveDate::default()
+}
+
+impl Default for Open {
+  fn default() -> Self {
+    Self {
+      meta: Default::default(),
+      span: Default::default(),
+      date: default_date(),
+      account: String::new(),
+      currencies: SmallStrVec::new(),
+      opt_booking: None,
+      comment: None,
+      key_values: SmallKeyValues::new(),
+    }
+  }
+}
+
+impl Default for Close {
+  fn default() -> Self {
+    Self {
+      meta: Default::default(),
+      span: Default::default(),
+      date: default_date(),
+      account: String::new(),
+      comment: None,
+      key_values: SmallKeyValues::new(),
+    }
+  }
+}
+
+impl Default for Balance {
+  fn default() -> Self {
+    Self {
+      meta: Default::default(),
+      span: Default::default(),
+      date: default_date(),
+      account: String::new(),
+      amount: Amount::default(),
+      tolerance: None,
+      comment: None,
+      key_values: SmallKeyValues::new(),
+    }
+  }
+}
+
+impl Default for Pad {
+  fn default() -> Self {
+    Self {
+      meta: Default::default(),
+      span: Default::default(),
+      date: default_date(),
+      account: String::new(),
+      from_account: String::new(),
+      comment: None,
+      key_values: SmallKeyValues::new(),
+    }
+  }
+}
+
+impl Default for Transaction {
+  fn default() -> Self {
+    Self {
+      meta: Default::default(),
+      span: Default::default(),
+      date: default_date(),
+      txn: None,
+      payee: None,
+      narration: None,
+      tags: SmallStrVec::new(),
+      links: SmallStrVec::new(),
+      key_values: SmallKeyValues::new(),
+      tolerances: None,
+      postings: SmallPostings::new(),
+    }
+  }
+}
+
+impl Default for Commodity {
+  fn default() -> Self {
+    Self {
+      meta: Default::default(),
+      span: Default::default(),
+      date: default_date(),
+      currency: String::new(),
+      comment: None,
+      key_values: SmallKeyValues::new(),
+    }
+  }
+}
+
+impl Default for Price {
+  fn default() -> Self {
+    Self {
+      meta: Default::default(),
+      span: Default::default(),
+      date: default_date(),
+      currency: String::new(),
+      amount: Amount::default(),
+      comment: None,
+      key_values: SmallKeyValues::new(),
+    }
+  }
+}
+
+impl Default for Event {
+  fn default() -> Self {
+    Self {
+      meta: Default::default(),
+      span: Default::default(),
+      date: default_date(),
+      event_type: String::new(),
+      desc: String::new(),
+      comment: None,
+      key_values: SmallKeyValues::new(),
+    }
+  }
+}
+
+impl Default for Query {
+  fn default() -> Self {
+    Self {
+      meta: Default::default(),
+      span: Default::default(),
+      date: default_date(),
+      name: String::new(),
+      query: String::new(),
+      comment: None,
+      key_values: SmallKeyValues::new(),
+    }
+  }
+}
+
+impl Default for Note {
+  fn default() -> Self {
+    Self {
+      meta: Default::default(),
+      span: Default::default(),
+      date: default_date(),
+      account: String::new(),
+      note: String::new(),
+      comment: None,
+      key_values: SmallKeyValues::new(),
+    }
+  }
+}
+
+impl Default for Document {
+  fn default() -> Self {
+    Self {
+      meta: Default::default(),
+      span: Default::default(),
+      date: default_date(),
+      account: String::new(),
+      filename: String::new(),
+      tags_links: None,
+      tags: SmallStrVec::new(),
+      links: SmallStrVec::new(),
+      comment: None,
+      key_values: SmallKeyValues::new(),
+    }
+  }
+}
+
+impl Default for Custom {
+  fn default() -> Self {
+    Self {
+      meta: Default::default(),
+      span: Default::default(),
+      date: default_date(),
+      name: String::new(),
+      values: SmallCustomValues::new(),
+      comment: None,
+      key_values: SmallKeyValues::new(),
+    }
+  }
 }
 
 fn value_error(meta: &ast::Meta, message: impl Into<String>) -> ParseError {
@@ -249,6 +428,10 @@ fn parse_date_value(
   let trimmed = raw.trim();
   NaiveDate::parse_from_str(trimmed, "%Y-%m-%d")
     .map_err(|err| value_error(meta, format!("invalid {} `{}`: {}", ctx, raw, err)))
+}
+
+fn parse_directive_date(raw: &str, meta: &ast::Meta) -> Result<NaiveDate, ParseError> {
+  parse_date_value(raw, meta, "date")
 }
 
 fn parse_bool_value(raw: &str, meta: &ast::Meta, ctx: &str) -> Result<bool, ParseError> {
@@ -668,10 +851,11 @@ impl<'a> TryFrom<(ast::Open<'a>, &Arc<String>, &Rope)> for Open {
       .into_iter()
       .map(|kv| KeyValue::try_from((kv, &meta)))
       .collect::<Result<_, _>>()?;
+    let date = parse_directive_date(open.date.content, &meta)?;
     Ok(Self {
       meta: meta.clone(),
       span: open.span,
-      date: open.date.content.to_string(),
+      date,
       account: open.account.content.to_string(),
       currencies: open
         .currencies
@@ -699,10 +883,11 @@ impl<'a> TryFrom<(ast::Close<'a>, &Arc<String>, &Rope)> for Close {
       .into_iter()
       .map(|kv| KeyValue::try_from((kv, &meta)))
       .collect::<Result<_, _>>()?;
+    let date = parse_directive_date(close.date.content, &meta)?;
     Ok(Self {
       meta,
       span: close.span,
-      date: close.date.content.to_string(),
+      date,
       account: close.account.content.to_string(),
       comment: close.comment.map(|c| c.content.to_string()),
       key_values,
@@ -721,10 +906,11 @@ impl<'a> TryFrom<(ast::Balance<'a>, &Arc<String>, &Rope)> for Balance {
       .into_iter()
       .map(|kv| KeyValue::try_from((kv, &meta)))
       .collect::<Result<_, _>>()?;
+    let date = parse_directive_date(balance.date.content, &meta)?;
     Ok(Self {
       meta,
       span: balance.span,
-      date: balance.date.content.to_string(),
+      date,
       account: balance.account.content.to_string(),
       amount: Amount::try_from(balance.amount)?,
       tolerance: balance.tolerance.map(|t| t.content.to_string()),
@@ -745,10 +931,11 @@ impl<'a> TryFrom<(ast::Pad<'a>, &Arc<String>, &Rope)> for Pad {
       .into_iter()
       .map(|kv| KeyValue::try_from((kv, &meta)))
       .collect::<Result<_, _>>()?;
+    let date = parse_directive_date(pad.date.content, &meta)?;
     Ok(Self {
       meta,
       span: pad.span,
-      date: pad.date.content.to_string(),
+      date,
       account: pad.account.content.to_string(),
       from_account: pad.from_account.content.to_string(),
       comment: pad.comment.map(|c| c.content.to_string()),
@@ -770,10 +957,11 @@ impl<'a> TryFrom<(ast::Commodity<'a>, &Arc<String>, &Rope)> for Commodity {
       .into_iter()
       .map(|kv| KeyValue::try_from((kv, &meta)))
       .collect::<Result<_, _>>()?;
+    let date = parse_directive_date(cmdty.date.content, &meta)?;
     Ok(Self {
       meta,
       span: cmdty.span,
-      date: cmdty.date.content.to_string(),
+      date,
       currency: cmdty.currency.content.to_string(),
       comment: cmdty.comment.map(|c| c.content.to_string()),
       key_values,
@@ -792,10 +980,11 @@ impl<'a> TryFrom<(ast::Price<'a>, &Arc<String>, &Rope)> for Price {
       .into_iter()
       .map(|kv| KeyValue::try_from((kv, &meta)))
       .collect::<Result<_, _>>()?;
+    let date = parse_directive_date(price.date.content, &meta)?;
     Ok(Self {
       meta,
       span: price.span,
-      date: price.date.content.to_string(),
+      date,
       currency: price.currency.content.to_string(),
       amount: Amount::try_from(price.amount)?,
       comment: price.comment.map(|c| c.content.to_string()),
@@ -817,10 +1006,11 @@ impl<'a> TryFrom<(ast::Event<'a>, &Arc<String>, &Rope)> for Event {
       .collect::<Result<_, _>>()?;
     let event_type = unquote_json(event.event_type.content, &meta, "event type")?;
     let desc = unquote_json(event.desc.content, &meta, "event description")?;
+    let date = parse_directive_date(event.date.content, &meta)?;
     Ok(Self {
       meta,
       span: event.span,
-      date: event.date.content.to_string(),
+      date,
       event_type,
       desc,
       comment: event.comment.map(|c| c.content.to_string()),
@@ -842,10 +1032,11 @@ impl<'a> TryFrom<(ast::Query<'a>, &Arc<String>, &Rope)> for Query {
       .collect::<Result<_, _>>()?;
     let name = unquote_json(query.name.content, &meta, "query name")?;
     let query_str = unquote_json(query.query.content, &meta, "query")?;
+    let date = parse_directive_date(query.date.content, &meta)?;
     Ok(Self {
       meta,
       span: query.span,
-      date: query.date.content.to_string(),
+      date,
       name,
       query: query_str,
       comment: query.comment.map(|c| c.content.to_string()),
@@ -866,10 +1057,11 @@ impl<'a> TryFrom<(ast::Note<'a>, &Arc<String>, &Rope)> for Note {
       .map(|kv| KeyValue::try_from((kv, &meta)))
       .collect::<Result<_, _>>()?;
     let note_str = unquote_json(note.note.content, &meta, "note")?;
+    let date = parse_directive_date(note.date.content, &meta)?;
     Ok(Self {
       meta,
       span: note.span,
-      date: note.date.content.to_string(),
+      date,
       account: note.account.content.to_string(),
       note: note_str,
       comment: note.comment.map(|c| c.content.to_string()),
@@ -893,10 +1085,11 @@ impl<'a> TryFrom<(ast::Document<'a>, &Arc<String>, &Rope)> for Document {
       .collect::<Result<_, _>>()?;
     let filename = unquote_json(doc.filename.content, &meta, "document filename")?;
     let resolved_filename = resolve_path(meta.filename.as_ref(), &filename);
+    let date = parse_directive_date(doc.date.content, &meta)?;
     Ok(Self {
       meta,
       span: doc.span,
-      date: doc.date.content.to_string(),
+      date,
       account: doc.account.content.to_string(),
       filename: resolved_filename,
       tags_links: doc.tags_links.as_ref().map(|groups| {
@@ -939,10 +1132,11 @@ impl<'a> TryFrom<(ast::Custom<'a>, &Arc<String>, &Rope)> for Custom {
       .map(|v| CustomValue::try_from((v, &meta)))
       .collect::<Result<_, _>>()?;
     let name = unquote_json(custom.name.content, &meta, "custom name")?;
+    let date = parse_directive_date(custom.date.content, &meta)?;
     Ok(Self {
       meta,
       span: custom.span,
-      date: custom.date.content.to_string(),
+      date,
       name,
       values,
       comment: custom.comment.map(|c| c.content.to_string()),
@@ -1169,10 +1363,11 @@ impl<'a> TryFrom<(ast::Transaction<'a>, &Arc<String>, &Rope)> for Transaction {
       .into_iter()
       .map(|kv| KeyValue::try_from((kv, &meta)))
       .collect::<Result<_, _>>()?;
+    let date = parse_directive_date(txn.date.content, &meta)?;
     Ok(Self {
       meta,
       span: txn.span,
-      date: txn.date.content.to_string(),
+      date,
       txn: txn.txn.map(|t| t.content.to_string()),
       payee,
       narration,

@@ -1,6 +1,7 @@
 #[path = "core_common.rs"]
 mod common;
 use beancount_core::{Amount, Balance, NumberExpr, Pad};
+use chrono::NaiveDate;
 use common::{lines, parse_as};
 use smallvec::smallvec;
 
@@ -13,7 +14,7 @@ fn balance_directive_no_tolerance() {
   let expected = Balance {
     meta: balance.meta.clone(),
     span: balance.span,
-    date: "2010-02-01".into(),
+    date: NaiveDate::from_ymd_opt(2010, 2, 1).unwrap(),
     account: "Assets:Cash".into(),
     amount: Amount {
       raw: "100 USD".into(),
@@ -37,7 +38,7 @@ fn pad_directive() {
   let expected = Pad {
     meta: pad.meta.clone(),
     span: pad.span,
-    date: "2010-03-01".into(),
+    date: NaiveDate::from_ymd_opt(2010, 3, 1).unwrap(),
     account: "Assets:Cash".into(),
     from_account: "Equity:Pad".into(),
     comment: None,
@@ -67,7 +68,7 @@ fn balance_directive_tolerance_after_currency_with_comment() {
   let expected = Balance {
     meta: balance.meta.clone(),
     span: balance.span,
-    date: "2026-02-03".into(),
+    date: NaiveDate::from_ymd_opt(2026, 2, 3).unwrap(),
     account: "Assets:Cash".into(),
     amount: Amount {
       raw: "0 USD ~1 USD".into(),

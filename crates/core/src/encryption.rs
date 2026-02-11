@@ -63,10 +63,9 @@ pub fn read_encrypted_file<P: AsRef<Path>>(filename: P) -> io::Result<String> {
   if !output.status.success() {
     let code = output.status.code().unwrap_or(-1);
     let stderr = String::from_utf8_lossy(&output.stderr);
-    return Err(io::Error::new(
-      io::ErrorKind::Other,
-      format!("Could not decrypt file ({code}): {stderr}"),
-    ));
+    return Err(io::Error::other(format!(
+      "Could not decrypt file ({code}): {stderr}"
+    )));
   }
 
   String::from_utf8(output.stdout)

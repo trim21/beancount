@@ -18,4 +18,4 @@ pub use crate::inference::{
   infer_transaction_postings,
 };
 pub use beancount_parser::{Error, ParseError, Position, Result, ast};
-pub use loader::{LoadAndBookResult, LoadResult, LoaderError, ParsedUnit};
+pub use loader::{LoadAndBookResult, LoadResult, Loader, LoaderError, ParsedUnit};

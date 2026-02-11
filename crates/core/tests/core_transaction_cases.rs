@@ -141,7 +141,10 @@ fn transaction_with_tags_and_inline_comments() {
 
   let txn: Transaction = parse_as(&input, "book.bean");
 
-  assert_eq!(txn.date, "2010-01-12");
+  assert_eq!(
+    txn.date,
+    chrono::NaiveDate::from_ymd_opt(2010, 1, 12).unwrap()
+  );
   assert_eq!(txn.txn.as_deref(), Some("*"));
   assert_eq!(txn.payee.as_deref(), Some("Payee"));
   assert_eq!(txn.narration.as_deref(), Some("Narration"));

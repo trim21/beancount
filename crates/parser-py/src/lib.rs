@@ -426,7 +426,7 @@ fn load_recursive_and_book(
     .call1(py, (options_map, other_list))?;
 
   // Run Rust booking using config derived from aggregated options.
-  let booking_config = booking_config_from_options_map(py, &options_map.bind(py))?;
+  let booking_config = booking_config_from_options_map(py, options_map.bind(py))?;
   let (booked, booking_errors) =
     core::booking::book_directives(directives, &booking_config);
 
@@ -1104,7 +1104,7 @@ fn meta_extra<'py>(
 fn convert_open(py: Python<'_>, open: &core::Open) -> PyResult<Py<PyAny>> {
   let cache = cache(py)?;
   let meta = make_metadata(py, &open.meta, meta_extra(py, &open.key_values)?)?;
-  let date = py_date(py, open.date.as_str())?;
+  let date = py_date_from_naive(py, &open.date)?;
   let currencies = PyList::new(py, open.currencies.iter().map(|c| c.as_str()))?;
   let booking = booking_to_py(py, cache, open.opt_booking.as_deref())?;
   cache
@@ -1144,7 +1144,7 @@ fn convert_close(py: Python<'_>, close: &core::Close) -> PyResult<Py<PyAny>> {
   let cache = cache(py)?;
   let cls = &cache.close_cls;
   let meta = make_metadata(py, &close.meta, meta_extra(py, &close.key_values)?)?;
-  let date = py_date(py, close.date.as_str())?;
+  let date = py_date_from_naive(py, &close.date)?;
   cls.call1(py, (meta, date, close.account.as_str()))
 }
 
@@ -1156,7 +1156,7 @@ fn convert_balance(
   let cache = cache(py)?;
   let cls = &cache.balance_cls;
   let meta = make_metadata(py, &balance.meta, meta_extra(py, &balance.key_values)?)?;
-  let date = py_date(py, balance.date.as_str())?;
+  let date = py_date_from_naive(py, &balance.date)?;
   update_dcontext(
     py,
     cache,
@@ -1189,7 +1189,7 @@ fn convert_pad(py: Python<'_>, pad: &core::Pad) -> PyResult<Py<PyAny>> {
   let cache = cache(py)?;
   let cls = &cache.pad_cls;
   let meta = make_metadata(py, &pad.meta, meta_extra(py, &pad.key_values)?)?;
-  let date = py_date(py, pad.date.as_str())?;
+  let date = py_date_from_naive(py, &pad.date)?;
   cls.call1(
     py,
     (meta, date, pad.account.as_str(), pad.from_account.as_str()),
@@ -1217,7 +1217,7 @@ fn convert_transaction(
   }
 
   let meta = make_metadata(py, &txn.meta, Some(extra))?;
-  let date = py_date(py, txn.date.as_str())?;
+  let date = py_date_from_naive(py, &txn.date)?;
 
   let flag = txn
     .txn
@@ -1417,7 +1417,7 @@ fn convert_commodity(py: Python<'_>, commodity: &core::Commodity) -> PyResult<Py
   let cache = cache(py)?;
   let cls = &cache.commodity_cls;
   let meta = make_metadata(py, &commodity.meta, meta_extra(py, &commodity.key_values)?)?;
-  let date = py_date(py, commodity.date.as_str())?;
+  let date = py_date_from_naive(py, &commodity.date)?;
   cls.call1(py, (meta, date, commodity.currency.as_str()))
 }
 
@@ -1429,7 +1429,7 @@ fn convert_price(
   let cache = cache(py)?;
   let cls = &cache.price_cls;
   let meta = make_metadata(py, &price.meta, meta_extra(py, &price.key_values)?)?;
-  let date = py_date(py, price.date.as_str())?;
+  let date = py_date_from_naive(py, &price.date)?;
   update_dcontext(
     py,
     cache,
@@ -1463,7 +1463,7 @@ fn convert_event(py: Python<'_>, event: &core::Event) -> PyResult<Py<PyAny>> {
   let cache = cache(py)?;
   let cls = &cache.event_cls;
   let meta = make_metadata(py, &event.meta, meta_extra(py, &event.key_values)?)?;
-  let date = py_date(py, event.date.as_str())?;
+  let date = py_date_from_naive(py, &event.date)?;
   cls.call1(
     py,
     (meta, date, event.event_type.as_str(), event.desc.as_str()),
@@ -1474,7 +1474,7 @@ fn convert_query(py: Python<'_>, query: &core::Query) -> PyResult<Py<PyAny>> {
   let cache = cache(py)?;
   let cls = &cache.query_cls;
   let meta = make_metadata(py, &query.meta, meta_extra(py, &query.key_values)?)?;
-  let date = py_date(py, query.date.as_str())?;
+  let date = py_date_from_naive(py, &query.date)?;
   cls.call1(py, (meta, date, query.name.as_str(), query.query.as_str()))
 }
 
@@ -1482,7 +1482,7 @@ fn convert_note(py: Python<'_>, note: &core::Note) -> PyResult<Py<PyAny>> {
   let cache = cache(py)?;
   let cls = &cache.note_cls;
   let meta = make_metadata(py, &note.meta, meta_extra(py, &note.key_values)?)?;
-  let date = py_date(py, note.date.as_str())?;
+  let date = py_date_from_naive(py, &note.date)?;
   cls.call1(
     py,
     (
@@ -1500,7 +1500,7 @@ fn convert_document(py: Python<'_>, doc: &core::Document) -> PyResult<Py<PyAny>>
   let cache = cache(py)?;
   let cls = &cache.document_cls;
   let meta = make_metadata(py, &doc.meta, meta_extra(py, &doc.key_values)?)?;
-  let date = py_date(py, doc.date.as_str())?;
+  let date = py_date_from_naive(py, &doc.date)?;
   let tags = PyFrozenSet::new(py, doc.tags.iter().map(|t| t.as_str()))?;
   let links = PyFrozenSet::new(py, doc.links.iter().map(|l| l.as_str()))?;
   cls.call1(
@@ -1520,7 +1520,7 @@ fn convert_custom(py: Python<'_>, custom: &core::Custom) -> PyResult<Py<PyAny>> 
   let cache = cache(py)?;
   let cls = &cache.custom_cls;
   let meta = make_metadata(py, &custom.meta, meta_extra(py, &custom.key_values)?)?;
-  let date = py_date(py, custom.date.as_str())?;
+  let date = py_date_from_naive(py, &custom.date)?;
   let values: Vec<Py<PyAny>> = custom
     .values
     .iter()
@@ -1662,6 +1662,14 @@ fn py_date(py: Python<'_>, date: &str) -> PyResult<Py<PyAny>> {
     .map_err(|err| PyValueError::new_err(format!("invalid day `{}`: {}", date, err)))?;
 
   let pydate: Py<PyAny> = PyDate::new(py, year, month, day)?.unbind().into();
+  Ok(pydate)
+}
+
+fn py_date_from_naive(py: Python<'_>, date: &NaiveDate) -> PyResult<Py<PyAny>> {
+  let pydate: Py<PyAny> =
+    PyDate::new(py, date.year(), date.month() as u8, date.day() as u8)?
+      .unbind()
+      .into();
   Ok(pydate)
 }
 

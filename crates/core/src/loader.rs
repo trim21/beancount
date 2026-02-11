@@ -6,7 +6,10 @@ use glob::glob;
 use path_clean::PathClean;
 use std::collections::{BTreeMap, HashSet, VecDeque};
 
-use crate::booking::{BookingConfig, BookingError, book_directives};
+use crate::booking::{
+  BookingCheckpoint, BookingConfig, BookingError, BookingState, book_directives,
+  book_directives_with_state_and_checkpoints,
+};
 
 fn read_file_to_string_auto(filename: &str) -> std::io::Result<String> {
   if crate::encryption::is_encrypted_file(filename) {
@@ -15,6 +18,16 @@ fn read_file_to_string_auto(filename: &str) -> std::io::Result<String> {
     std::fs::read_to_string(filename)
   }
 }
+
+fn normalize_filename(filename: &str) -> String {
+  std::path::Path::new(filename)
+    .to_path_buf()
+    .clean()
+    .to_string_lossy()
+    .into_owned()
+}
+
+const BOOKING_CHECKPOINT_INTERVAL: usize = 256;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LoaderError {
@@ -61,25 +74,6 @@ pub struct LoadAndBookResult {
   pub booking_errors: Vec<BookingError>,
 }
 
-fn directive_date(d: &Directive) -> &str {
-  match d {
-    Directive::Open(x) => &x.date,
-    Directive::Close(x) => &x.date,
-    Directive::Balance(x) => &x.date,
-    Directive::Pad(x) => &x.date,
-    Directive::Transaction(x) => &x.date,
-    Directive::Commodity(x) => &x.date,
-    Directive::Price(x) => &x.date,
-    Directive::Event(x) => &x.date,
-    Directive::Query(x) => &x.date,
-    Directive::Note(x) => &x.date,
-    Directive::Document(x) => &x.date,
-    Directive::Custom(x) => &x.date,
-    // Non-entry directives shouldn't reach the sorted list, but keep a stable fallback.
-    _ => "1970-01-01",
-  }
-}
-
 fn directive_lineno(d: &Directive) -> u32 {
   match d {
     Directive::Open(x) => x.meta.line as u32,
@@ -109,9 +103,27 @@ fn directive_sort_order(d: &Directive) -> i32 {
 }
 
 fn directive_sort_key(d: &Directive) -> (NaiveDate, i32, u32) {
-  let date = NaiveDate::parse_from_str(directive_date(d), "%Y-%m-%d")
-    .unwrap_or_else(|_| NaiveDate::from_ymd_opt(1970, 1, 1).unwrap());
+  let date = directive_date_parsed(d);
   (date, directive_sort_order(d), directive_lineno(d))
+}
+
+fn directive_date_parsed(d: &Directive) -> NaiveDate {
+  match d {
+    Directive::Open(x) => x.date,
+    Directive::Close(x) => x.date,
+    Directive::Balance(x) => x.date,
+    Directive::Pad(x) => x.date,
+    Directive::Transaction(x) => x.date,
+    Directive::Commodity(x) => x.date,
+    Directive::Price(x) => x.date,
+    Directive::Event(x) => x.date,
+    Directive::Query(x) => x.date,
+    Directive::Note(x) => x.date,
+    Directive::Document(x) => x.date,
+    Directive::Custom(x) => x.date,
+    // Non-entry directives shouldn't reach the sorted list, but keep a stable fallback.
+    _ => NaiveDate::default(),
+  }
 }
 
 fn partition_directives(
@@ -362,6 +374,36 @@ fn parse_content_to_unit(filename: &str, content: &str) -> ParsedUnit {
   }
 }
 
+fn expand_includes(
+  filename: &str,
+  includes: &[String],
+) -> std::io::Result<(Vec<String>, Vec<LoaderError>)> {
+  let mut include_expanded: Vec<String> = Vec::new();
+  let mut load_errors: Vec<LoaderError> = Vec::new();
+
+  for include in includes {
+    let search_path = resolve_path(filename, include);
+    let mut matched: Vec<String> = Vec::new();
+    for path in (glob(&search_path)
+      .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e.msg))?)
+    .flatten()
+    {
+      matched.push(normalize_filename(&path.to_string_lossy()));
+    }
+
+    if matched.is_empty() {
+      load_errors.push(LoaderError::at_load(format!(
+        "File glob \"{}\" does not match any files",
+        include
+      )));
+    } else {
+      include_expanded.extend(matched);
+    }
+  }
+
+  Ok((include_expanded, load_errors))
+}
+
 /// Recursively load a file, following `include` directives (with glob expansion).
 ///
 /// Returns raw Rust directives (already normalized and with push-tag/meta applied
@@ -373,7 +415,7 @@ pub fn load_file_recursive(top_filename: &str) -> std::io::Result<LoadResult> {
 /// Recursively load a string source; includes resolve relative to CWD.
 pub fn load_string_recursive(content: &str, filename: &str) -> LoadResult {
   load_sources_recursive(vec![(filename.to_string(), false)], Some(content))
-    .expect("string load should not perform IO")
+    .unwrap_or_else(|err| panic!("string load should not perform IO: {err}"))
 }
 
 /// Convenience API for Rust callers: recursive load + booking.
@@ -409,6 +451,390 @@ pub fn book_loaded(load: LoadResult, config: &BookingConfig) -> LoadAndBookResul
   }
 }
 
+#[derive(Debug, Clone)]
+pub struct Loader {
+  top_filename: String,
+  units: BTreeMap<String, ParsedUnit>,
+  expanded_includes: BTreeMap<String, Vec<String>>,
+  parents: BTreeMap<String, HashSet<String>>,
+  load_errors: BTreeMap<String, Vec<LoaderError>>,
+  load_generation: u64,
+  booking_cache: Option<BookingCache>,
+}
+
+#[derive(Debug, Clone)]
+struct BookingCache {
+  generation: u64,
+  config: BookingConfig,
+  directives: Vec<Directive>,
+  booked_directives: Vec<Directive>,
+  booking_errors: Vec<BookingError>,
+  checkpoints: Vec<BookingCheckpoint>,
+}
+
+impl Loader {
+  pub fn new(top_filename: &str) -> std::io::Result<Self> {
+    let top = normalize_filename(top_filename);
+    let mut loader = Self {
+      top_filename: top.clone(),
+      units: BTreeMap::new(),
+      expanded_includes: BTreeMap::new(),
+      parents: BTreeMap::new(),
+      load_errors: BTreeMap::new(),
+      load_generation: 0,
+      booking_cache: None,
+    };
+
+    loader.ensure_parsed(&top, None)?;
+    loader.load_generation = 1;
+    Ok(loader)
+  }
+
+  pub fn load(&self) -> LoadResult {
+    let mut source_stack: VecDeque<String> = VecDeque::new();
+    let mut seen: HashSet<String> = HashSet::new();
+    let mut units: Vec<ParsedUnit> = Vec::new();
+    let mut directives: Vec<Directive> = Vec::new();
+    let mut parse_errors: Vec<ParseError> = Vec::new();
+    let mut load_errors: Vec<LoaderError> = Vec::new();
+
+    source_stack.push_back(self.top_filename.clone());
+
+    while let Some(source) = source_stack.pop_front() {
+      if !seen.insert(source.clone()) {
+        continue;
+      }
+
+      if let Some(unit) = self.units.get(&source) {
+        units.push(unit.clone());
+        directives.extend(unit.directives.clone());
+        parse_errors.extend(unit.errors.clone());
+      }
+
+      if let Some(errors) = self.load_errors.get(&source) {
+        load_errors.extend(errors.clone());
+      }
+
+      if let Some(children) = self.expanded_includes.get(&source) {
+        for child in children {
+          source_stack.push_back(child.clone());
+        }
+      }
+    }
+
+    let mut filenames_seen: Vec<String> =
+      units.iter().map(|u| u.filename.clone()).collect();
+    filenames_seen.sort();
+
+    directives.sort_by_key(directive_sort_key);
+
+    LoadResult {
+      units,
+      directives,
+      parse_errors,
+      load_errors,
+      filenames_seen,
+    }
+  }
+
+  pub fn on_change(
+    &mut self,
+    filename: &str,
+    config: &BookingConfig,
+  ) -> std::io::Result<LoadAndBookResult> {
+    let normalized = normalize_filename(filename);
+    let old_includes = self
+      .expanded_includes
+      .get(&normalized)
+      .cloned()
+      .unwrap_or_default();
+
+    let new_includes = self.refresh_file(&normalized)?;
+
+    let old_set: HashSet<String> = old_includes.iter().cloned().collect();
+    let new_set: HashSet<String> = new_includes.iter().cloned().collect();
+
+    for added in new_set.difference(&old_set) {
+      self
+        .parents
+        .entry(added.clone())
+        .or_default()
+        .insert(normalized.clone());
+    }
+
+    for removed in old_set.difference(&new_set) {
+      if let Some(parents) = self.parents.get_mut(removed) {
+        parents.remove(&normalized);
+        if parents.is_empty() {
+          self.parents.remove(removed);
+        }
+      }
+    }
+
+    for added in new_set.difference(&old_set) {
+      self.ensure_parsed(added, Some(&normalized))?;
+    }
+
+    for removed in old_set.difference(&new_set) {
+      self.remove_unreferenced(removed);
+    }
+
+    self.remove_unreferenced(&normalized);
+    self.load_generation = self.load_generation.wrapping_add(1);
+
+    Ok(self.load_and_book(config))
+  }
+
+  pub fn load_and_book(&mut self, config: &BookingConfig) -> LoadAndBookResult {
+    let load = self.load();
+
+    if let Some(cache) = self.booking_cache.as_ref()
+      && cache.generation == self.load_generation
+      && cache.config == *config
+    {
+      return LoadAndBookResult {
+        load,
+        booked_directives: cache.booked_directives.clone(),
+        booking_errors: cache.booking_errors.clone(),
+      };
+    }
+
+    if let Some(cache) = self.booking_cache.as_ref()
+      && cache.config == *config
+    {
+      let earliest_change = earliest_changed_date(&cache.directives, &load.directives);
+
+      if earliest_change.is_none() {
+        let booked_directives = cache.booked_directives.clone();
+        let booking_errors = cache.booking_errors.clone();
+
+        let new_cache = BookingCache {
+          generation: self.load_generation,
+          config: cache.config.clone(),
+          directives: cache.directives.clone(),
+          booked_directives: booked_directives.clone(),
+          booking_errors: booking_errors.clone(),
+          checkpoints: cache.checkpoints.clone(),
+        };
+
+        self.booking_cache = Some(new_cache);
+        return LoadAndBookResult {
+          load,
+          booked_directives,
+          booking_errors,
+        };
+      }
+
+      let earliest_change = earliest_change.unwrap_or_default();
+      let start_index = first_index_at_or_after_date(&load.directives, earliest_change);
+
+      if start_index > 0 {
+        let mut state = BookingState::default();
+        let mut booked_len = 0;
+        let mut error_len = 0;
+
+        if let Some(checkpoint) = latest_checkpoint_at(&cache.checkpoints, start_index) {
+          state = checkpoint.state.clone();
+          booked_len = checkpoint.booked_len;
+          error_len = checkpoint.error_len;
+        }
+
+        let mut booked_directives = cache.booked_directives[..booked_len].to_vec();
+        let mut booking_errors = cache.booking_errors[..error_len].to_vec();
+
+        let (booked_tail, errors_tail, _, tail_checkpoints) =
+          book_directives_with_state_and_checkpoints(
+            &load.directives[start_index..],
+            config,
+            state,
+            BOOKING_CHECKPOINT_INTERVAL,
+            start_index,
+          );
+
+        booked_directives.extend(booked_tail);
+        booking_errors.extend(errors_tail);
+
+        let mut checkpoints: Vec<BookingCheckpoint> = Vec::new();
+        for checkpoint in &cache.checkpoints {
+          if checkpoint.start_index <= start_index {
+            checkpoints.push(checkpoint.clone());
+          }
+        }
+        let had_prefix = !checkpoints.is_empty();
+        for checkpoint in tail_checkpoints {
+          if checkpoint.start_index > start_index || !had_prefix {
+            checkpoints.push(checkpoint);
+          }
+        }
+
+        self.booking_cache = Some(BookingCache {
+          generation: self.load_generation,
+          config: config.clone(),
+          directives: load.directives.clone(),
+          booked_directives: booked_directives.clone(),
+          booking_errors: booking_errors.clone(),
+          checkpoints,
+        });
+
+        return LoadAndBookResult {
+          load,
+          booked_directives,
+          booking_errors,
+        };
+      }
+    }
+
+    let (booked_directives, booking_errors, _, checkpoints) =
+      book_directives_with_state_and_checkpoints(
+        &load.directives,
+        config,
+        BookingState::default(),
+        BOOKING_CHECKPOINT_INTERVAL,
+        0,
+      );
+    self.booking_cache = Some(BookingCache {
+      generation: self.load_generation,
+      config: config.clone(),
+      directives: load.directives.clone(),
+      booked_directives: booked_directives.clone(),
+      booking_errors: booking_errors.clone(),
+      checkpoints,
+    });
+
+    LoadAndBookResult {
+      load,
+      booked_directives,
+      booking_errors,
+    }
+  }
+
+  fn ensure_parsed(&mut self, filename: &str, parent: Option<&str>) -> std::io::Result<()> {
+    let normalized = normalize_filename(filename);
+    let parent_normalized = parent.map(normalize_filename);
+
+    if let Some(parent) = parent_normalized {
+      self
+        .parents
+        .entry(normalized.clone())
+        .or_default()
+        .insert(parent.to_string());
+    }
+
+    if self.units.contains_key(&normalized) || self.load_errors.contains_key(&normalized) {
+      return Ok(());
+    }
+
+    let includes = self.refresh_file(&normalized)?;
+    for child in includes {
+      self.ensure_parsed(&child, Some(&normalized))?;
+    }
+
+    Ok(())
+  }
+
+  fn refresh_file(&mut self, filename: &str) -> std::io::Result<Vec<String>> {
+    let normalized = normalize_filename(filename);
+
+    self.load_errors.remove(&normalized);
+
+    if !std::path::Path::new(&normalized).exists() {
+      self.units.remove(&normalized);
+      self.expanded_includes.remove(&normalized);
+      self.load_errors.insert(
+        normalized.clone(),
+        vec![LoaderError::at_load(format!(
+          "File \"{}\" does not exist",
+          normalized
+        ))],
+      );
+      return Ok(Vec::new());
+    }
+
+    let content = read_file_to_string_auto(&normalized)?;
+    let unit = parse_content_to_unit(&normalized, &content);
+    let (expanded, load_errors) = expand_includes(&normalized, &unit.includes)?;
+
+    if load_errors.is_empty() {
+      self.load_errors.remove(&normalized);
+    } else {
+      self.load_errors.insert(normalized.clone(), load_errors);
+    }
+
+    self
+      .expanded_includes
+      .insert(normalized.clone(), expanded.clone());
+    self.units.insert(normalized, unit);
+
+    Ok(expanded)
+  }
+
+  fn remove_unreferenced(&mut self, filename: &str) {
+    let normalized = normalize_filename(filename);
+
+    if normalized == self.top_filename {
+      return;
+    }
+
+    if self.parents.contains_key(&normalized) {
+      return;
+    }
+
+    self.units.remove(&normalized);
+    self.load_errors.remove(&normalized);
+
+    if let Some(children) = self.expanded_includes.remove(&normalized) {
+      for child in children {
+        if let Some(parents) = self.parents.get_mut(&child) {
+          parents.remove(&normalized);
+          if parents.is_empty() {
+            self.parents.remove(&child);
+          }
+        }
+        self.remove_unreferenced(&child);
+      }
+    }
+  }
+}
+
+fn earliest_changed_date(old: &[Directive], new: &[Directive]) -> Option<NaiveDate> {
+  let min_len = old.len().min(new.len());
+  for idx in 0..min_len {
+    if old[idx] != new[idx] {
+      let old_date = directive_date_parsed(&old[idx]);
+      let new_date = directive_date_parsed(&new[idx]);
+      return Some(old_date.min(new_date));
+    }
+  }
+
+  if old.len() != new.len() {
+    let extra = if old.len() < new.len() {
+      &new[min_len]
+    } else {
+      &old[min_len]
+    };
+    return Some(directive_date_parsed(extra));
+  }
+
+  None
+}
+
+fn first_index_at_or_after_date(directives: &[Directive], date: NaiveDate) -> usize {
+  directives
+    .iter()
+    .position(|directive| directive_date_parsed(directive) >= date)
+    .unwrap_or(directives.len())
+}
+
+fn latest_checkpoint_at(
+  checkpoints: &[BookingCheckpoint],
+  index: usize,
+) -> Option<&BookingCheckpoint> {
+  checkpoints
+    .iter()
+    .rev()
+    .find(|checkpoint| checkpoint.start_index <= index)
+}
+
 fn load_sources_recursive(
   sources: Vec<(String, bool)>,
   string_source: Option<&str>,
@@ -423,11 +849,7 @@ fn load_sources_recursive(
 
   while let Some((source, is_file)) = source_stack.pop_front() {
     if is_file {
-      let filename = std::path::Path::new(&source)
-        .to_path_buf()
-        .clean()
-        .to_string_lossy()
-        .into_owned();
+      let filename = normalize_filename(&source);
 
       if filenames_seen.contains(&filename) {
         load_errors.push(LoaderError::at_load(format!(
@@ -451,35 +873,12 @@ fn load_sources_recursive(
       let unit = parse_content_to_unit(&filename, &content);
 
       // Expand includes from this unit.
-      let mut include_expanded: Vec<String> = Vec::new();
-      for include in &unit.includes {
-        let search_path = resolve_path(&filename, include);
-        let mut matched: Vec<String> = Vec::new();
-        for entry in glob(&search_path)
-          .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e.msg))?
-        {
-          if let Ok(path) = entry {
-            matched.push(path.to_string_lossy().into_owned());
-          }
-        }
-
-        if matched.is_empty() {
-          load_errors.push(LoaderError::at_load(format!(
-            "File glob \"{}\" does not match any files",
-            include
-          )));
-        } else {
-          include_expanded.extend(matched);
-        }
-      }
+      let (include_expanded, mut include_errors) =
+        expand_includes(&filename, &unit.includes)?;
+      load_errors.append(&mut include_errors);
 
       for inc in include_expanded {
-        let norm = std::path::Path::new(&inc)
-          .to_path_buf()
-          .clean()
-          .to_string_lossy()
-          .into_owned();
-        source_stack.push_back((norm, true));
+        source_stack.push_back((inc, true));
       }
 
       parse_errors.extend(unit.errors.clone());
@@ -491,35 +890,12 @@ fn load_sources_recursive(
       let unit = parse_content_to_unit(&source, content);
 
       // Includes resolve with resolve_path's "<string>" behavior.
-      let mut include_expanded: Vec<String> = Vec::new();
-      for include in &unit.includes {
-        let search_path = resolve_path(&source, include);
-        let mut matched: Vec<String> = Vec::new();
-        for entry in glob(&search_path)
-          .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e.msg))?
-        {
-          if let Ok(path) = entry {
-            matched.push(path.to_string_lossy().into_owned());
-          }
-        }
-
-        if matched.is_empty() {
-          load_errors.push(LoaderError::at_load(format!(
-            "File glob \"{}\" does not match any files",
-            include
-          )));
-        } else {
-          include_expanded.extend(matched);
-        }
-      }
+      let (include_expanded, mut include_errors) =
+        expand_includes(&source, &unit.includes)?;
+      load_errors.append(&mut include_errors);
 
       for inc in include_expanded {
-        let norm = std::path::Path::new(&inc)
-          .to_path_buf()
-          .clean()
-          .to_string_lossy()
-          .into_owned();
-        source_stack.push_back((norm, true));
+        source_stack.push_back((inc, true));
       }
 
       parse_errors.extend(unit.errors.clone());
@@ -531,7 +907,7 @@ fn load_sources_recursive(
   let mut filenames_seen_vec: Vec<String> = filenames_seen.into_iter().collect();
   filenames_seen_vec.sort();
 
-  directives.sort_by(|a, b| directive_sort_key(a).cmp(&directive_sort_key(b)));
+  directives.sort_by_key(directive_sort_key);
 
   Ok(LoadResult {
     units,

@@ -53,21 +53,34 @@ struct Lot {
   remaining: Decimal,
 }
 
+#[derive(Debug, Clone, Default)]
+pub(crate) struct BookingState {
+  lots_by_account: HashMap<String, Vec<Lot>>,
+  booking_none_by_account: HashMap<String, bool>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct BookingCheckpoint {
+  pub start_index: usize,
+  pub state: BookingState,
+  pub booked_len: usize,
+  pub error_len: usize,
+}
+
 fn posting_bucket_currency(posting: &Posting) -> Option<&str> {
   if let Some(cost) = posting.cost.as_ref() {
     return Some(cost.currency.as_str());
   }
-  if let Some(cost_spec) = posting.cost_spec.as_ref() {
-    if let Some(cost_amount) = cost_spec.amount.as_ref() {
-      if let Some(currency) = cost_amount.currency.as_deref() {
-        return Some(currency);
-      }
-    }
+  if let Some(cost_spec) = posting.cost_spec.as_ref()
+    && let Some(cost_amount) = cost_spec.amount.as_ref()
+    && let Some(currency) = cost_amount.currency.as_deref()
+  {
+    return Some(currency);
   }
-  if let Some(price) = posting.price_annotation.as_ref() {
-    if let Some(currency) = price.currency.as_deref() {
-      return Some(currency);
-    }
+  if let Some(price) = posting.price_annotation.as_ref()
+    && let Some(currency) = price.currency.as_deref()
+  {
+    return Some(currency);
   }
   posting.amount.as_ref().and_then(|a| a.currency.as_deref())
 }
@@ -143,20 +156,19 @@ fn infer_tolerances(txn: &Transaction, config: &BookingConfig) -> Vec<(String, D
   // list of (currency, tolerance) pairs to preserve insertion order.
   let mut seen_currencies: BTreeSet<String> = BTreeSet::new();
   for posting in &txn.postings {
-    if let Some(units) = posting.amount.as_ref() {
-      if !matches!(units.number, NumberExpr::Missing) {
-        if let Some(curr) = units.currency.as_deref() {
-          seen_currencies.insert(curr.to_string());
-        }
-      }
+    if let Some(units) = posting.amount.as_ref()
+      && !matches!(units.number, NumberExpr::Missing)
+      && let Some(curr) = units.currency.as_deref()
+    {
+      seen_currencies.insert(curr.to_string());
     }
     if let Some(cost) = posting.cost.as_ref() {
       seen_currencies.insert(cost.currency.clone());
     }
-    if let Some(price) = posting.price_annotation.as_ref() {
-      if let Some(curr) = price.currency.as_deref() {
-        seen_currencies.insert(curr.to_string());
-      }
+    if let Some(price) = posting.price_annotation.as_ref()
+      && let Some(curr) = price.currency.as_deref()
+    {
+      seen_currencies.insert(curr.to_string());
     }
   }
 
@@ -230,42 +242,41 @@ fn infer_tolerances(txn: &Transaction, config: &BookingConfig) -> Vec<(String, D
           });
         *entry += cost_tol;
       }
-    } else if let Some(cost_spec) = posting.cost_spec.as_ref() {
-      if let Some(cost_amount) = cost_spec.amount.as_ref() {
-        if let Some(cost_currency) = cost_amount.currency.as_deref() {
-          let mut cost_tol = maximum_tolerance();
-          for maybe_number in [&cost_amount.total, &cost_amount.per] {
-            let Some(expr) = maybe_number.as_ref() else {
-              continue;
-            };
-            if let Ok(cost_number) = number_expr_to_decimal(expr) {
-              cost_tol = (tolerance * cost_number).min(cost_tol);
-            }
-          }
-          let key = cost_currency.to_string();
-          let entry = cost_tolerances.entry(key.clone()).or_insert_with(|| {
-            cost_order.push(key.clone());
-            Decimal::ZERO
-          });
-          *entry += cost_tol;
+    } else if let Some(cost_spec) = posting.cost_spec.as_ref()
+      && let Some(cost_amount) = cost_spec.amount.as_ref()
+      && let Some(cost_currency) = cost_amount.currency.as_deref()
+    {
+      let mut cost_tol = maximum_tolerance();
+      for maybe_number in [&cost_amount.total, &cost_amount.per] {
+        let Some(expr) = maybe_number.as_ref() else {
+          continue;
+        };
+        if let Ok(cost_number) = number_expr_to_decimal(expr) {
+          cost_tol = (tolerance * cost_number).min(cost_tol);
         }
       }
+      let key = cost_currency.to_string();
+      let entry = cost_tolerances.entry(key.clone()).or_insert_with(|| {
+        cost_order.push(key.clone());
+        Decimal::ZERO
+      });
+      *entry += cost_tol;
     }
 
     // Price contribution.
-    if let Some(price) = posting.price_annotation.as_ref() {
-      if let (Some(price_currency), Ok(price_number)) = (
+    if let Some(price) = posting.price_annotation.as_ref()
+      && let (Some(price_currency), Ok(price_number)) = (
         price.currency.as_deref(),
         number_expr_to_decimal(&price.number),
-      ) {
-        let price_tol = (tolerance * price_number).min(maximum_tolerance());
-        let key = price_currency.to_string();
-        let entry = cost_tolerances.entry(key.clone()).or_insert_with(|| {
-          cost_order.push(key.clone());
-          Decimal::ZERO
-        });
-        *entry += price_tol;
-      }
+      )
+    {
+      let price_tol = (tolerance * price_number).min(maximum_tolerance());
+      let key = price_currency.to_string();
+      let entry = cost_tolerances.entry(key.clone()).or_insert_with(|| {
+        cost_order.push(key.clone());
+        Decimal::ZERO
+      });
+      *entry += price_tol;
     }
   }
 
@@ -308,17 +319,45 @@ pub fn book_directives(
   directives: Vec<Directive>,
   config: &BookingConfig,
 ) -> (Vec<Directive>, Vec<BookingError>) {
+  let (booked, errors, _) =
+    book_directives_with_state(&directives, config, BookingState::default());
+  (booked, errors)
+}
+
+pub(crate) fn book_directives_with_state_and_checkpoints(
+  directives: &[Directive],
+  config: &BookingConfig,
+  state: BookingState,
+  checkpoint_interval: usize,
+  start_index: usize,
+) -> (
+  Vec<Directive>,
+  Vec<BookingError>,
+  BookingState,
+  Vec<BookingCheckpoint>,
+) {
   let mut errors: Vec<BookingError> = Vec::new();
   let mut out: Vec<Directive> = Vec::with_capacity(directives.len());
+  let mut checkpoints: Vec<BookingCheckpoint> = Vec::new();
 
-  let mut lots_by_account: HashMap<String, Vec<Lot>> = HashMap::new();
-  let mut booking_none_by_account: HashMap<String, bool> = HashMap::new();
+  let mut state = state;
 
-  for directive in directives {
+  if checkpoint_interval > 0 {
+    checkpoints.push(BookingCheckpoint {
+      start_index,
+      state: state.clone(),
+      booked_len: out.len(),
+      error_len: errors.len(),
+    });
+  }
+
+  for (offset, directive) in directives.iter().cloned().enumerate() {
     match directive {
       Directive::Open(open) => {
         if is_booking_none(&open) {
-          booking_none_by_account.insert(open.account.clone(), true);
+          state
+            .booking_none_by_account
+            .insert(open.account.clone(), true);
         }
         out.push(Directive::Open(open));
       }
@@ -342,7 +381,8 @@ pub fn book_directives(
 
         // Minimal reduction booking by matching tracked lots.
         for posting in &mut txn.postings {
-          if *booking_none_by_account
+          if *state
+            .booking_none_by_account
             .get(&posting.account)
             .unwrap_or(&false)
           {
@@ -403,7 +443,10 @@ pub fn book_directives(
             continue;
           };
 
-          let lots = lots_by_account.entry(posting.account.clone()).or_default();
+          let lots = state
+            .lots_by_account
+            .entry(posting.account.clone())
+            .or_default();
 
           let mut matched_index: Option<usize> = None;
           for (idx, lot) in lots.iter().enumerate() {
@@ -500,8 +543,8 @@ pub fn book_directives(
           let cost_date = cost_spec
             .date
             .as_deref()
-            .unwrap_or(txn.date.as_str())
-            .to_string();
+            .map(|d| d.to_string())
+            .unwrap_or_else(|| txn.date.format("%Y-%m-%d").to_string());
 
           posting.cost = Some(Cost {
             number: NumberExpr::Literal(cost_number.to_string()),
@@ -514,7 +557,8 @@ pub fn book_directives(
 
         // Track augmenting lots.
         for posting in &txn.postings {
-          if *booking_none_by_account
+          if *state
+            .booking_none_by_account
             .get(&posting.account)
             .unwrap_or(&false)
           {
@@ -544,7 +588,8 @@ pub fn book_directives(
             continue;
           };
 
-          lots_by_account
+          state
+            .lots_by_account
             .entry(posting.account.clone())
             .or_default()
             .push(Lot {
@@ -562,18 +607,17 @@ pub fn book_directives(
         let mut any_known_weight = false;
 
         for (idx, posting) in txn.postings.iter().enumerate() {
-          if posting.cost.is_none() {
-            if let Some(cost_spec) = posting.cost_spec.as_ref() {
-              if cost_spec.amount.is_none() {
-                if missing_cost_index.is_some() {
-                  missing_cost_index = None;
-                  inferred_cost_currency = None;
-                  break;
-                }
-                missing_cost_index = Some(idx);
-                continue;
-              }
+          if posting.cost.is_none()
+            && let Some(cost_spec) = posting.cost_spec.as_ref()
+            && cost_spec.amount.is_none()
+          {
+            if missing_cost_index.is_some() {
+              missing_cost_index = None;
+              inferred_cost_currency = None;
+              break;
             }
+            missing_cost_index = Some(idx);
+            continue;
           }
 
           let Some(cost) = posting.cost.as_ref() else {
@@ -619,7 +663,7 @@ pub fn book_directives(
             posting.cost = Some(Cost {
               number: NumberExpr::Literal(per_unit.to_string()),
               currency: curr,
-              date: txn.date.clone(),
+              date: txn.date.format("%Y-%m-%d").to_string(),
               label: None,
             });
             posting.cost_spec = None;
@@ -838,7 +882,10 @@ pub fn book_directives(
           && !sums.is_empty()
         {
           if sums.len() == 1 {
-            let (curr, sum) = sums.into_iter().next().expect("len==1");
+            let Some((curr, sum)) = sums.into_iter().next() else {
+              debug_assert!(false, "sums.len()==1 but no element");
+              continue;
+            };
             let inferred = -sum;
             let posting = &mut txn.postings[midx];
 
@@ -966,15 +1013,15 @@ pub fn book_directives(
             }
           };
 
-          if let Some(cost_number) = per_unit {
-            if cost_number < Decimal::ZERO {
-              errors.push(BookingError {
-                meta: posting.meta.clone(),
-                kind: BookingErrorKind::CostNegative,
-                message: "Cost is negative".to_string(),
-                entry: Some(txn_for_errors.clone()),
-              });
-            }
+          if let Some(cost_number) = per_unit
+            && cost_number < Decimal::ZERO
+          {
+            errors.push(BookingError {
+              meta: posting.meta.clone(),
+              kind: BookingErrorKind::CostNegative,
+              message: "Cost is negative".to_string(),
+              entry: Some(txn_for_errors.clone()),
+            });
           }
         }
 
@@ -982,7 +1029,27 @@ pub fn book_directives(
       }
       other => out.push(other),
     }
+
+    let absolute_index = start_index + offset + 1;
+    if checkpoint_interval > 0 && absolute_index.is_multiple_of(checkpoint_interval) {
+      checkpoints.push(BookingCheckpoint {
+        start_index: absolute_index,
+        state: state.clone(),
+        booked_len: out.len(),
+        error_len: errors.len(),
+      });
+    }
   }
 
-  (out, errors)
+  (out, errors, state, checkpoints)
+}
+
+pub(crate) fn book_directives_with_state(
+  directives: &[Directive],
+  config: &BookingConfig,
+  state: BookingState,
+) -> (Vec<Directive>, Vec<BookingError>, BookingState) {
+  let (booked, errors, state, _) =
+    book_directives_with_state_and_checkpoints(directives, config, state, 0, 0);
+  (booked, errors, state)
 }

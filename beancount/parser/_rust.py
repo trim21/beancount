@@ -18,10 +18,12 @@ load_file = _parser_rust.load_file
 parse_string = _parser_rust.parse_string
 load_file_and_book = _parser_rust.load_file_and_book
 load_string_and_book = _parser_rust.load_string_and_book
+check_file_rust = _parser_rust.check_file_rust
 
 __all__ = [
     "__version__",
     "build_options_map",
+    "check_file_rust",
     "load_file",
     "load_file_and_book",
     "load_string_and_book",
