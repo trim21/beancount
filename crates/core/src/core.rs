@@ -125,6 +125,7 @@ pub struct Transaction {
   pub tags: SmallStrVec,
   pub links: SmallStrVec,
   pub key_values: SmallKeyValues,
+  pub tolerances: Option<Vec<(String, Decimal)>>,
   pub postings: SmallPostings,
 }
 
@@ -135,6 +136,7 @@ pub struct Posting {
   pub opt_flag: Option<String>,
   pub account: String,
   pub amount: Option<Amount>,
+  pub cost: Option<Cost>,
   pub cost_spec: Option<CostSpec>,
   pub price_operator: Option<ast::PriceOperator>,
   pub price_annotation: Option<Amount>,
@@ -476,6 +478,14 @@ pub struct CostSpec {
   pub label: Option<String>,
   pub merge: bool,
   pub is_total: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Cost {
+  pub number: NumberExpr,
+  pub currency: String,
+  pub date: String,
+  pub label: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -1128,6 +1138,7 @@ impl<'a> TryFrom<(ast::Posting<'a>, &Arc<String>, &Rope)> for Posting {
       opt_flag: posting.opt_flag.map(|f| f.content.to_string()),
       account: posting.account.content.to_string(),
       amount: posting.amount.map(Amount::try_from).transpose()?,
+      cost: None,
       cost_spec,
       price_operator: posting.price_operator.map(|op| op.content),
       price_annotation: posting.price_annotation.map(Amount::try_from).transpose()?,
@@ -1176,6 +1187,7 @@ impl<'a> TryFrom<(ast::Transaction<'a>, &Arc<String>, &Rope)> for Transaction {
         .map(|l| l.content.to_string())
         .collect(),
       key_values,
+      tolerances: None,
       postings: txn
         .postings
         .into_iter()

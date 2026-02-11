@@ -16,6 +16,7 @@ use pyo3::sync::PyOnceLock;
 use pyo3::types::{PyDate, PyDict, PyFrozenSet, PyList, PyModule, PyString, PyTuple};
 use rust_decimal::Decimal;
 use std::collections::{BTreeMap, HashMap};
+use std::str::FromStr;
 
 mod data;
 use data::Booking;
@@ -28,8 +29,72 @@ fn _parser_rust(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
   m.add_class::<Booking>()?;
   m.add_function(wrap_pyfunction!(load_file, m)?)?;
   m.add_function(wrap_pyfunction!(parse_string, m)?)?;
+  m.add_function(wrap_pyfunction!(load_file_and_book, m)?)?;
+  m.add_function(wrap_pyfunction!(load_string_and_book, m)?)?;
+  m.add_function(wrap_pyfunction!(check_file_rust, m)?)?;
   m.add_class::<PyParserError>()?;
   Ok(())
+}
+
+/// Rust-only recursive load + booking that avoids converting directives into Python.
+///
+/// This exists purely for performance comparisons. It does NOT run the Python
+/// transformations/plugins pipeline nor validation.
+///
+/// Returns (entries_count, load_errors, parse_errors, booking_errors).
+#[pyfunction]
+pub fn check_file_rust(
+  py: Python<'_>,
+  filename: &str,
+) -> PyResult<(usize, usize, usize, usize)> {
+  py.detach(|| {
+    let config = core::booking::BookingConfig::default();
+
+    let load = core::loader::load_file_recursive(filename).map_err(|err| {
+      PyValueError::new_err(format!("failed to read {}: {}", filename, err))
+    })?;
+
+    let load_errors = load.load_errors.len();
+    let parse_errors = load.parse_errors.len();
+
+    // Avoid cloning directives: we don't need to return them to Python.
+    let directives = load.directives;
+    let (booked, booking_errors_vec) = core::booking::book_directives(directives, &config);
+
+    Ok((
+      booked.len(),
+      load_errors,
+      parse_errors,
+      booking_errors_vec.len(),
+    ))
+  })
+}
+
+/// Load a file and run booking (parse + normalize + options + booking).
+///
+/// This is intended to replace the Python loader's recursive parse + booking step.
+/// The loader will still run decryption and transformations in Python.
+///
+/// NOTE: Booking is still a scaffold (currently a no-op).
+#[pyfunction]
+pub fn load_file_and_book(
+  py: Python<'_>,
+  filename: &str,
+) -> PyResult<(Py<PyAny>, Py<PyAny>, Py<PyAny>)> {
+  load_recursive_and_book(py, filename, Some(filename), None)
+}
+
+/// Load a string and run booking (parse + normalize + options + booking).
+///
+/// NOTE: Scaffold implementation: parses only and returns (entries, errors, options_map).
+#[pyfunction]
+#[pyo3(signature = (content, filename = "<string>"))]
+pub fn load_string_and_book(
+  py: Python<'_>,
+  content: &str,
+  filename: &str,
+) -> PyResult<(Py<PyAny>, Py<PyAny>, Py<PyAny>)> {
+  load_recursive_and_book(py, filename, None, Some(content))
 }
 
 /// Parser error exposed to Python. Matches beancount.core.data.BeancountError protocol.
@@ -126,6 +191,8 @@ struct DataCache {
   booking_hifo: Py<PyAny>,
   // beancount.core.position.CostSpec class.
   cost_spec_cls: Py<PyAny>,
+  // beancount.core.position.Cost class.
+  cost_cls: Py<PyAny>,
   // beancount.parser.grammar.ValueType class.
   value_type_cls: Py<PyAny>,
   // Python bool type object.
@@ -150,6 +217,17 @@ struct DataCache {
   missing: Py<PyAny>,
   // beancount.core.number.ZERO sentinel.
   zero: Py<PyAny>,
+
+  // beancount.loader.LoadError class.
+  load_error_cls: Py<PyAny>,
+  // beancount.loader.aggregate_options_map callable.
+  aggregate_options_map_fn: Py<PyAny>,
+
+  // beancount.parser.booking_full.InterpolationError class.
+  interpolation_error_cls: Py<PyAny>,
+
+  // beancount.parser.booking_full.ReductionError class.
+  reduction_error_cls: Py<PyAny>,
 }
 
 impl DataCache {
@@ -165,6 +243,8 @@ impl DataCache {
     let options_mod = py.import("beancount.parser.options")?;
     let grammar_mod = py.import("beancount.parser.grammar")?;
     let copy_mod = py.import("copy")?;
+    let loader_mod = py.import("beancount.loader")?;
+    let booking_full_mod = py.import("beancount.parser.booking_full")?;
 
     let bool_type: Py<PyAny> = builtins_mod.getattr("bool")?.unbind();
     let str_type: Py<PyAny> = builtins_mod.getattr("str")?.unbind();
@@ -174,6 +254,7 @@ impl DataCache {
     let missing = number_mod.getattr("MISSING")?.unbind();
     let zero = number_mod.getattr("ZERO")?.unbind();
     let cost_spec_cls = position_mod.getattr("CostSpec")?.unbind();
+    let cost_cls = position_mod.getattr("Cost")?.unbind();
     let options_defs = options_mod.getattr("OPTIONS")?.unbind();
     let option_descriptors = parse_option_descriptors(py, &options_defs)?;
     let deepcopy_fn = copy_mod.getattr("deepcopy")?.unbind();
@@ -217,6 +298,7 @@ impl DataCache {
       amount_ctor,
       deepcopy_fn,
       cost_spec_cls,
+      cost_cls,
       value_type_cls: grammar_mod.getattr("ValueType")?.unbind(),
       account_type_token: account_mod.getattr("TYPE")?.unbind(),
       options_defaults: options_mod.getattr("OPTIONS_DEFAULTS")?.unbind(),
@@ -229,8 +311,251 @@ impl DataCache {
       decimal_type,
       missing,
       zero,
+
+      load_error_cls: loader_mod.getattr("LoadError")?.unbind(),
+      aggregate_options_map_fn: loader_mod.getattr("aggregate_options_map")?.unbind(),
+
+      interpolation_error_cls: booking_full_mod.getattr("InterpolationError")?.unbind(),
+
+      reduction_error_cls: booking_full_mod.getattr("ReductionError")?.unbind(),
     })
   }
+}
+
+fn build_load_error(py: Python<'_>, message: String) -> PyResult<Py<PyAny>> {
+  let cache = cache(py)?;
+  let meta = cache.new_metadata.call1(py, ("<load>", 0))?;
+  cache.load_error_cls.call1(py, (meta, message))
+}
+
+fn build_interpolation_error(
+  py: Python<'_>,
+  meta_filename: &str,
+  meta_lineno: usize,
+  message: String,
+  entry: Py<PyAny>,
+) -> PyResult<Py<PyAny>> {
+  let cache = cache(py)?;
+  let meta = cache.new_metadata.call1(py, (meta_filename, meta_lineno))?;
+  cache
+    .interpolation_error_cls
+    .call1(py, (meta, message, entry))
+}
+
+fn build_reduction_error(
+  py: Python<'_>,
+  meta_filename: &str,
+  meta_lineno: usize,
+  message: String,
+  entry: Py<PyAny>,
+) -> PyResult<Py<PyAny>> {
+  let cache = cache(py)?;
+  let meta = cache.new_metadata.call1(py, (meta_filename, meta_lineno))?;
+  cache.reduction_error_cls.call1(py, (meta, message, entry))
+}
+fn load_recursive_and_book(
+  py: Python<'_>,
+  top_filename: &str,
+  file_source: Option<&str>,
+  string_source: Option<&str>,
+) -> PyResult<(Py<PyAny>, Py<PyAny>, Py<PyAny>)> {
+  let cache = cache(py)?;
+
+  // Core crate performs recursive loading; we run booking after aggregating
+  // options_map so booking can depend on options.
+  let load_result = if let Some(fname) = file_source {
+    core::loader::load_file_recursive(fname)
+      .map_err(|err| PyValueError::new_err(format!("failed to read {}: {}", fname, err)))?
+  } else {
+    core::loader::load_string_recursive(string_source.unwrap_or(""), top_filename)
+  };
+
+  // Destructure so we can move out large fields (directives) without cloning.
+  let core::loader::LoadResult {
+    units,
+    directives,
+    parse_errors: _,
+    load_errors,
+    filenames_seen,
+  } = load_result;
+
+  // Build per-unit options maps (so we can aggregate like Python does).
+  let mut top_options_map: Option<Py<PyAny>> = None;
+  let mut other_options_maps: Vec<Py<PyAny>> = Vec::new();
+  let mut all_errors: Vec<Py<PyAny>> = Vec::new();
+
+  for unit in &units {
+    let (omap, mut errs) = build_options_map_for_unit(py, unit)?;
+    all_errors.append(&mut errs);
+    if top_options_map.is_none() {
+      top_options_map = Some(omap);
+    } else {
+      other_options_maps.push(omap);
+    }
+  }
+
+  // Convert per-unit parse errors with correct filenames.
+  for unit in &units {
+    for err in &unit.errors {
+      all_errors.push(build_parser_error(py, err.clone(), unit.filename.as_str())?);
+    }
+  }
+  for err in &load_errors {
+    all_errors.push(build_load_error(py, err.message.clone())?);
+  }
+
+  let options_map = match top_options_map {
+    Some(omap) => omap,
+    None => {
+      let omap = default_options_map(py)?;
+      omap.set_item("filename", "<load>")?;
+      omap.unbind().into()
+    }
+  };
+
+  // options_map["include"] = sorted(filenames_seen)
+  options_map
+    .bind(py)
+    .cast::<PyDict>()?
+    .set_item("include", PyList::new(py, &filenames_seen)?)?;
+
+  // options_map = aggregate_options_map(options_map, other_options_maps)
+  let other_list = PyList::new(py, other_options_maps)?;
+  let options_map = cache
+    .aggregate_options_map_fn
+    .call1(py, (options_map, other_list))?;
+
+  // Run Rust booking using config derived from aggregated options.
+  let booking_config = booking_config_from_options_map(py, &options_map.bind(py))?;
+  let (booked, booking_errors) =
+    core::booking::book_directives(directives, &booking_config);
+
+  let dcontext = options_map
+    .bind(py)
+    .cast::<PyDict>()?
+    .get_item("dcontext")?
+    .ok_or_else(|| PyValueError::new_err("dcontext option missing from defaults"))?;
+
+  // Convert Rust booking errors into Python InterpolationError objects.
+  for berr in &booking_errors {
+    let filename = berr.meta.filename.as_str();
+    let lineno = berr.meta.line;
+    let entry_obj: Py<PyAny> = match berr.entry.as_ref() {
+      Some(txn) => convert_transaction(py, txn, &dcontext)?,
+      None => py.None(),
+    };
+    match berr.kind {
+      core::booking::BookingErrorKind::ReductionNoMatch => {
+        all_errors.push(build_reduction_error(
+          py,
+          filename,
+          lineno,
+          berr.message.clone(),
+          entry_obj,
+        )?);
+      }
+      _ => {
+        all_errors.push(build_interpolation_error(
+          py,
+          filename,
+          lineno,
+          berr.message.clone(),
+          entry_obj,
+        )?);
+      }
+    }
+  }
+
+  let (entries_vec, _tag_errors) = convert_directives(py, booked, top_filename, &dcontext)?;
+  let entries = PyList::new(py, entries_vec)?.unbind().into();
+  let errors: Py<PyAny> = PyList::new(py, all_errors)?.unbind().into();
+  Ok((entries, errors, options_map))
+}
+
+fn py_decimal_to_rust(value: &Bound<'_, PyAny>) -> PyResult<Decimal> {
+  let s: String = value.str()?.extract()?;
+  Decimal::from_str(&s)
+    .map_err(|err| PyValueError::new_err(format!("invalid Decimal '{}': {}", s, err)))
+}
+
+fn booking_config_from_options_map(
+  _py: Python<'_>,
+  options_map: &Bound<'_, PyAny>,
+) -> PyResult<core::booking::BookingConfig> {
+  let omap = options_map.cast::<PyDict>()?;
+
+  let infer_any = omap
+    .get_item("infer_tolerance_from_cost")?
+    .ok_or_else(|| PyValueError::new_err("infer_tolerance_from_cost option missing"))?;
+
+  let infer_tolerance_from_cost: bool = infer_any.extract().or_else(|_| {
+    let s: String = infer_any.extract()?;
+    let normalized = s.trim().to_ascii_lowercase();
+    Ok::<bool, PyErr>(matches!(
+      normalized.as_str(),
+      "true" | "t" | "1" | "yes" | "y"
+    ))
+  })?;
+
+  let tolerance_multiplier_any = omap
+    .get_item("tolerance_multiplier")?
+    .ok_or_else(|| PyValueError::new_err("tolerance_multiplier option missing"))?;
+  let tolerance_multiplier = py_decimal_to_rust(&tolerance_multiplier_any)?;
+
+  let inferred_default_any = omap
+    .get_item("inferred_tolerance_default")?
+    .ok_or_else(|| PyValueError::new_err("inferred_tolerance_default option missing"))?;
+
+  let mut inferred_tolerance_default: BTreeMap<String, Decimal> = BTreeMap::new();
+  if !inferred_default_any.is_none() {
+    let items_any = inferred_default_any.call_method0("items")?;
+    for pair in items_any.try_iter()? {
+      let pair = pair?;
+      let pair = pair.cast::<PyTuple>()?;
+      let key: String = pair.get_item(0)?.extract()?;
+      let val_any = pair.get_item(1)?;
+      let val = py_decimal_to_rust(&val_any)?;
+      inferred_tolerance_default.insert(key, val);
+    }
+  }
+
+  Ok(core::booking::BookingConfig {
+    infer_tolerance_from_cost,
+    tolerance_multiplier,
+    inferred_tolerance_default,
+  })
+}
+
+fn build_options_map_for_unit(
+  py: Python<'_>,
+  unit: &core::ParsedUnit,
+) -> PyResult<(Py<PyAny>, Vec<Py<PyAny>>)> {
+  let options_map = default_options_map(py)?;
+  options_map.set_item("filename", &unit.filename)?;
+  options_map.set_item("include", PyList::new(py, &unit.includes)?)?;
+
+  let errors: Vec<Py<PyAny>> = apply_options(py, &options_map, &unit.options)?;
+
+  if !unit.plugins.is_empty() {
+    let plugin_list_obj = options_map
+      .get_item("plugin")?
+      .ok_or_else(|| PyValueError::new_err("plugin option missing from defaults"))?
+      .unbind();
+    let plugin_list = plugin_list_obj.bind(py).cast::<PyList>()?;
+    for plugin in &unit.plugins {
+      let name = PyString::new(py, &plugin.name).unbind().into();
+      let config = plugin
+        .config
+        .as_deref()
+        .map(|c| PyString::new(py, c).unbind().into())
+        .unwrap_or_else(|| py.None());
+      let tuple = PyTuple::new(py, [name, config])?;
+      plugin_list.append(tuple)?;
+    }
+  }
+
+  apply_display_context_options(py, &options_map)?;
+  Ok((options_map.unbind().into(), errors))
 }
 
 fn cache(py: Python<'_>) -> PyResult<&'static DataCache> {
@@ -879,7 +1204,19 @@ fn convert_transaction(
   let cache = cache(py)?;
   let cls = &cache.transaction_cls;
 
-  let meta = make_metadata(py, &txn.meta, meta_extra(py, &txn.key_values)?)?;
+  let extra = meta_extra(py, &txn.key_values)?;
+  let extra = extra.unwrap_or_else(|| PyDict::new(py));
+  if let Some(tolerances) = txn.tolerances.as_ref() {
+    let tol_dict = PyDict::new(py);
+    for (currency, tol) in tolerances {
+      let expr = core::NumberExpr::Literal(tol.to_string());
+      let dec = py_decimal(py, cache, &expr)?;
+      tol_dict.set_item(currency.as_str(), dec)?;
+    }
+    extra.set_item("__tolerances__", tol_dict)?;
+  }
+
+  let meta = make_metadata(py, &txn.meta, Some(extra))?;
   let date = py_date(py, txn.date.as_str())?;
 
   let flag = txn
@@ -994,24 +1331,44 @@ fn convert_posting(
     })
     .transpose()?
     .unwrap_or_else(|| cache.missing.clone_ref(py));
-  let cost = posting
-    .cost_spec
-    .as_ref()
-    .map(|cost| {
-      if let Some(amount) = &cost.amount
-        && let Some(curr) = amount.currency.as_deref()
-      {
-        if let Some(per) = amount.per.as_ref() {
-          update_dcontext(py, cache, dcontext, per, Some(curr))?;
+  let cost = if let Some(cost) = posting.cost.as_ref() {
+    update_dcontext(
+      py,
+      cache,
+      dcontext,
+      &cost.number,
+      Some(cost.currency.as_str()),
+    )?;
+    let number = py_decimal(py, cache, &cost.number)?;
+    let date = py_date(py, &cost.date)?;
+    let label = cost
+      .label
+      .as_deref()
+      .map(|s| PyString::new(py, s).unbind().into())
+      .unwrap_or_else(|| py.None());
+    cache
+      .cost_cls
+      .call1(py, (number, cost.currency.as_str(), date, label))?
+  } else {
+    let cost = posting
+      .cost_spec
+      .as_ref()
+      .map(|cost| {
+        if let Some(amount) = &cost.amount
+          && let Some(curr) = amount.currency.as_deref()
+        {
+          if let Some(per) = amount.per.as_ref() {
+            update_dcontext(py, cache, dcontext, per, Some(curr))?;
+          }
+          if let Some(total) = amount.total.as_ref() {
+            update_dcontext(py, cache, dcontext, total, Some(curr))?;
+          }
         }
-        if let Some(total) = amount.total.as_ref() {
-          update_dcontext(py, cache, dcontext, total, Some(curr))?;
-        }
-      }
-      cost_spec_to_py(py, cache, cost)
-    })
-    .transpose()?;
-  let cost = cost.unwrap_or_else(|| py.None());
+        cost_spec_to_py(py, cache, cost)
+      })
+      .transpose()?;
+    cost.unwrap_or_else(|| py.None())
+  };
   let price = if let Some(price_ast) = posting.price_annotation.as_ref() {
     let override_number: Option<String> =
       if posting.price_operator == Some(ast::PriceOperator::Total) {

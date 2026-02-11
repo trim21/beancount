@@ -248,6 +248,14 @@ def parse_file(
         raise ValueError("Only UTF-8 encoded files are supported.")
 
     filename = _normalize_filename(file, report_filename)
+
+    # The Rust extension can read from a filename directly.
+    # Preserve compatibility for stdin, file objects, and non-1 firstline.
+    if file != "-" and not isinstance(file, io.IOBase) and report_firstline == 1:
+        _ = debug
+        _ = kw
+        return _rust.load_file(filename)
+
     with contextlib.ExitStack() as ctx:
         if file == "-":
             file_io: io.IOBase = sys.stdin.buffer  # type: ignore[assignment]

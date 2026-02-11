@@ -14,8 +14,12 @@ crate-type = ["lib"]
 [dependencies]
 beancount-parser = { path = "../parser" }
 chrono = { version = "0.4.38", default-features = false }
+glob = "0.3"
 path-clean = "1.0.1"
 rust_decimal = "1.36.0"
 ropey = "1.6.1"
 serde_json = { workspace = true }
 smallvec = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"
