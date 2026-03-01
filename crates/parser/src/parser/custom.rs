@@ -5,8 +5,8 @@ use crate::utils::{looks_like_currency, looks_like_date};
 use crate::{Error, ast};
 
 use super::common::{
-  bare_string_parser, date_parser, inline_comment_parser, key_value_block_parser,
-  keyword_span_parser, quoted_string_parser, spanned_token_parser, ws0_parser, ws1_parser,
+  date_parser, inline_comment_parser, key_value_block_parser, keyword_span_parser,
+  quoted_string_parser, spanned_token_parser, ws0_parser, ws1_parser,
 };
 use super::number::{number_expr_parser, number_literal_parser};
 
@@ -51,15 +51,28 @@ pub(super) fn custom_directive_parser<'src>()
 
 fn custom_value_parser<'src>()
 -> impl Parser<'src, &'src str, ast::CustomValue<'src>, Error<'src>> {
-  let bool_value = bare_string_parser().filter(|value| {
+  let unquoted_value = any()
+    .filter(|c: &char| !c.is_whitespace() && *c != ';')
+    .repeated()
+    .at_least(1)
+    .to_slice()
+    .map_with(|value: &str, e| {
+      let span: SimpleSpan = e.span();
+      ast::WithSpan::new(ast::Span::from_range(span.start, span.end), value)
+    });
+
+  let bool_value = unquoted_value.clone().filter(|value| {
     value.content.eq_ignore_ascii_case("true")
       || value.content.eq_ignore_ascii_case("false")
   });
 
-  let date_value = bare_string_parser().filter(|value| looks_like_date(value.content));
+  let date_value = unquoted_value
+    .clone()
+    .filter(|value| looks_like_date(value.content));
 
-  let currency_value =
-    bare_string_parser().filter(|value| looks_like_currency(value.content));
+  let currency_value = unquoted_value
+    .clone()
+    .filter(|value| looks_like_currency(value.content));
 
   let amount_value = number_literal_parser()
     .then_ignore(ws1_parser())
@@ -111,7 +124,7 @@ fn custom_value_parser<'src>()
     amount: None,
   });
 
-  let account_value = bare_string_parser().map(|raw| ast::CustomValue {
+  let account_value = unquoted_value.map(|raw| ast::CustomValue {
     raw,
     kind: ast::CustomValueKind::Account,
     number: None,
