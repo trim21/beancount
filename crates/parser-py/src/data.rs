@@ -1,7 +1,7 @@
 // this is a example thay we can implement core data with rust
 // a data class would be mew easy to impl
 
-use chrono::{Datelike, NaiveDate};
+use jiff::civil::Date;
 use pyo3::exceptions::{PyIndexError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::sync::PyOnceLock;
@@ -219,7 +219,7 @@ fn booking_py_from_native(
 pub struct PyOpen {
   pub(crate) tuple_view: Py<PyTuple>,
   pub(crate) meta_py: Py<PyAny>,
-  pub(crate) date_native: NaiveDate,
+  pub(crate) date_native: Date,
   pub(crate) account_native: String,
   pub(crate) currencies_native: Vec<String>,
   pub(crate) booking_native: Option<Booking>,
@@ -237,13 +237,16 @@ impl PyOpen {
     currencies: Py<PyAny>,
     booking: Py<PyAny>,
   ) -> PyResult<Self> {
-    let date_native = date.bind(py).extract::<NaiveDate>()?;
+    let date_native = date.bind(py).extract::<Date>()?;
+
     let account_native = account.bind(py).extract::<String>()?;
-    let currencies_native = currencies
-      .bind(py)
+
+    let currencies_bound = currencies.bind(py);
+    let currencies_native = currencies_bound
       .extract::<Vec<String>>()
-      .or_else(|_| currencies.bind(py).extract::<String>().map(|c| vec![c]))
+      .or_else(|_| currencies_bound.extract::<String>().map(|c| vec![c]))
       .unwrap_or_default();
+
     let booking_native = booking_from_any(py, booking.bind(py))?;
 
     let tuple_view = PyTuple::new(
@@ -273,7 +276,7 @@ impl PyOpen {
   }
 
   #[getter]
-  fn date(&self) -> PyResult<NaiveDate> {
+  fn date(&self) -> PyResult<Date> {
     Ok(self.date_native)
   }
 
@@ -404,14 +407,14 @@ impl PyOpen {
   pub fn from_core_parts(
     py: Python<'_>,
     meta: Py<PyAny>,
-    date_native: NaiveDate,
+    date_native: Date,
     account: &str,
     currencies: &[String],
     booking_native: Option<Booking>,
   ) -> PyResult<Py<PyAny>> {
     let date_py: Py<PyAny> = PyDate::new(
       py,
-      date_native.year(),
+      date_native.year() as i32,
       date_native.month() as u8,
       date_native.day() as u8,
     )?

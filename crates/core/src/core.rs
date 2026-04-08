@@ -1,6 +1,6 @@
 use crate::path_utils::resolve_path;
 use beancount_parser::{ParseError, Position, ast};
-use chrono::NaiveDate;
+use jiff::civil::Date;
 use ropey::Rope;
 use rust_decimal::Decimal;
 use serde_json::from_str as parse_json;
@@ -73,7 +73,7 @@ pub struct Raw {
 pub struct Open {
   pub meta: ast::Meta,
   pub span: ast::Span,
-  pub date: NaiveDate,
+  pub date: Date,
   pub account: String,
   pub currencies: SmallStrVec,
   pub opt_booking: Option<String>,
@@ -85,7 +85,7 @@ pub struct Open {
 pub struct Close {
   pub meta: ast::Meta,
   pub span: ast::Span,
-  pub date: NaiveDate,
+  pub date: Date,
   pub account: String,
   pub comment: Option<String>,
   pub key_values: SmallKeyValues,
@@ -95,7 +95,7 @@ pub struct Close {
 pub struct Balance {
   pub meta: ast::Meta,
   pub span: ast::Span,
-  pub date: NaiveDate,
+  pub date: Date,
   pub account: String,
   pub amount: Amount,
   pub tolerance: Option<String>,
@@ -107,7 +107,7 @@ pub struct Balance {
 pub struct Pad {
   pub meta: ast::Meta,
   pub span: ast::Span,
-  pub date: NaiveDate,
+  pub date: Date,
   pub account: String,
   pub from_account: String,
   pub comment: Option<String>,
@@ -118,7 +118,7 @@ pub struct Pad {
 pub struct Transaction {
   pub meta: ast::Meta,
   pub span: ast::Span,
-  pub date: NaiveDate,
+  pub date: Date,
   pub txn: Option<String>,
   pub payee: Option<String>,
   pub narration: Option<String>,
@@ -148,7 +148,7 @@ pub struct Posting {
 pub struct Commodity {
   pub meta: ast::Meta,
   pub span: ast::Span,
-  pub date: NaiveDate,
+  pub date: Date,
   pub currency: String,
   pub comment: Option<String>,
   pub key_values: SmallKeyValues,
@@ -158,7 +158,7 @@ pub struct Commodity {
 pub struct Price {
   pub meta: ast::Meta,
   pub span: ast::Span,
-  pub date: NaiveDate,
+  pub date: Date,
   pub currency: String,
   pub amount: Amount,
   pub comment: Option<String>,
@@ -169,7 +169,7 @@ pub struct Price {
 pub struct Event {
   pub meta: ast::Meta,
   pub span: ast::Span,
-  pub date: NaiveDate,
+  pub date: Date,
   pub event_type: String,
   pub desc: String,
   pub comment: Option<String>,
@@ -180,7 +180,7 @@ pub struct Event {
 pub struct Query {
   pub meta: ast::Meta,
   pub span: ast::Span,
-  pub date: NaiveDate,
+  pub date: Date,
   pub name: String,
   pub query: String,
   pub comment: Option<String>,
@@ -191,7 +191,7 @@ pub struct Query {
 pub struct Note {
   pub meta: ast::Meta,
   pub span: ast::Span,
-  pub date: NaiveDate,
+  pub date: Date,
   pub account: String,
   pub note: String,
   pub comment: Option<String>,
@@ -202,7 +202,7 @@ pub struct Note {
 pub struct Document {
   pub meta: ast::Meta,
   pub span: ast::Span,
-  pub date: NaiveDate,
+  pub date: Date,
   pub account: String,
   pub filename: String,
   pub tags_links: Option<String>,
@@ -216,7 +216,7 @@ pub struct Document {
 pub struct Custom {
   pub meta: ast::Meta,
   pub span: ast::Span,
-  pub date: NaiveDate,
+  pub date: Date,
   pub name: String,
   pub values: SmallCustomValues,
   pub comment: Option<String>,
@@ -226,15 +226,15 @@ pub struct Custom {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CustomValue {
   String(String),
-  Date(NaiveDate),
+  Date(Date),
   Bool(bool),
   Amount(Amount),
   Number(NumberExpr),
   Account(String),
 }
 
-fn default_date() -> NaiveDate {
-  NaiveDate::default()
+fn default_date() -> Date {
+  Date::default()
 }
 
 impl Default for Open {
@@ -420,17 +420,16 @@ fn value_error(meta: &ast::Meta, message: impl Into<String>) -> ParseError {
   }
 }
 
-fn parse_date_value(
-  raw: &str,
-  meta: &ast::Meta,
-  ctx: &str,
-) -> Result<NaiveDate, ParseError> {
+fn parse_date_value(raw: &str, meta: &ast::Meta, ctx: &str) -> Result<Date, ParseError> {
   let trimmed = raw.trim();
-  NaiveDate::parse_from_str(trimmed, "%Y-%m-%d")
+
+  // Jiff is by default ISO
+  trimmed
+    .parse::<jiff::civil::Date>()
     .map_err(|err| value_error(meta, format!("invalid {} `{}`: {}", ctx, raw, err)))
 }
 
-fn parse_directive_date(raw: &str, meta: &ast::Meta) -> Result<NaiveDate, ParseError> {
+fn parse_directive_date(raw: &str, meta: &ast::Meta) -> Result<Date, ParseError> {
   parse_date_value(raw, meta, "date")
 }
 
@@ -657,7 +656,7 @@ pub struct CostAmount {
 pub struct CostSpec {
   pub raw: String,
   pub amount: Option<CostAmount>,
-  pub date: Option<NaiveDate>,
+  pub date: Option<Date>,
   pub label: Option<String>,
   pub merge: bool,
   pub is_total: bool,
@@ -667,7 +666,7 @@ pub struct CostSpec {
 pub struct Cost {
   pub number: NumberExpr,
   pub currency: String,
-  pub date: NaiveDate,
+  pub date: Date,
   pub label: Option<String>,
 }
 

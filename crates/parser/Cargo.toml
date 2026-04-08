@@ -16,11 +16,11 @@ anyhow = "1.0.100"
 serde_json = { workspace = true }
 smallvec = { workspace = true }
 serde = { version = "1", features = ["derive"], optional = true }
-chrono = { version = "0.4.38", default-features = false }
 rust_decimal = "1.36.0"
 chumsky = "0.12.0"
 ropey = "1.6.1"
 ariadne = "0.4"
+jiff = "0.2.23"
 
 [features]
 default = []
