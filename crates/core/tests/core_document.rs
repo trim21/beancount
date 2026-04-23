@@ -1,8 +1,8 @@
 #[path = "core_common.rs"]
 mod common;
 use beancount_core::{Document, KeyValue, KeyValueValue};
-use chrono::NaiveDate;
 use common::{lines, parse_as};
+use jiff::civil::date;
 use smallvec::smallvec;
 use std::path::PathBuf;
 
@@ -27,7 +27,7 @@ fn document_directive_with_tags_links() {
   let expected = Document {
     meta: doc.meta.clone(),
     span: doc.span,
-    date: NaiveDate::from_ymd_opt(2010, 10, 1).unwrap(),
+    date: date(2010, 10, 1),
     account: "Assets:Cash".into(),
     filename: expected_path.to_string_lossy().into_owned(),
     tags_links: doc.tags_links.clone(),

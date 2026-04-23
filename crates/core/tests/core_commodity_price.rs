@@ -1,8 +1,8 @@
 #[path = "core_common.rs"]
 mod common;
 use beancount_core::{Amount, Commodity, NumberExpr, Price};
-use chrono::NaiveDate;
 use common::{lines, parse_as};
+use jiff::civil::date;
 use smallvec::smallvec;
 
 #[test]
@@ -14,7 +14,7 @@ fn commodity_directive() {
   let expected = Commodity {
     meta: cmdty.meta.clone(),
     span: cmdty.span,
-    date: NaiveDate::from_ymd_opt(2010, 5, 1).unwrap(),
+    date: date(2010, 5, 1),
     currency: "USD".into(),
     comment: None,
     key_values: smallvec![],
@@ -32,7 +32,7 @@ fn price_directive() {
   let expected = Price {
     meta: price.meta.clone(),
     span: price.span,
-    date: NaiveDate::from_ymd_opt(2010, 6, 1).unwrap(),
+    date: date(2010, 6, 1),
     currency: "USD".into(),
     amount: Amount {
       raw: "1.25 CAD".into(),

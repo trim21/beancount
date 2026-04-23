@@ -1,8 +1,8 @@
 #[path = "core_common.rs"]
 mod common;
 use beancount_core::{Event, Query};
-use chrono::NaiveDate;
 use common::{lines, parse_as};
+use jiff::civil::date;
 use smallvec::smallvec;
 
 #[test]
@@ -14,7 +14,7 @@ fn event_directive() {
   let expected = Event {
     meta: event.meta.clone(),
     span: event.span,
-    date: NaiveDate::from_ymd_opt(2010, 7, 1).unwrap(),
+    date: date(2010, 7, 1),
     event_type: "office".into(),
     desc: "moved desks".into(),
     comment: None,
@@ -33,7 +33,7 @@ fn query_directive() {
   let expected = Query {
     meta: query.meta.clone(),
     span: query.span,
-    date: NaiveDate::from_ymd_opt(2010, 8, 1).unwrap(),
+    date: date(2010, 8, 1),
     name: "balances".into(),
     query: "SELECT * FROM balances".into(),
     comment: None,
