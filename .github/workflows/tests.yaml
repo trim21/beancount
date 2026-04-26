@@ -5,7 +5,6 @@ on:
   - workflow_dispatch
 
 jobs:
-
   rust-test:
     runs-on: ubuntu-latest
     steps:
@@ -21,6 +20,14 @@ jobs:
       - name: Cargo test
         run: cargo nextest run
 
+  check-wasm32-target:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - run: cargo check --target=wasm32-unknown-unknown -p beancount-core
+
   test:
     runs-on: ${{ matrix.os }}-latest
     strategy:
@@ -31,11 +38,11 @@ jobs:
           - windows
           - macos
         python:
-          - '3.10'
-          - '3.11'
-          - '3.12'
-          - '3.13'
-          - '3.14'
+          - "3.10"
+          - "3.11"
+          - "3.12"
+          - "3.13"
+          - "3.14"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
