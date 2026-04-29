@@ -1,8 +1,8 @@
 use crate::Directive;
 use crate::path_utils::resolve_path;
 use beancount_parser::ParseError;
-use chrono::NaiveDate;
 use glob::glob;
+use jiff::civil::Date;
 use path_clean::PathClean;
 use std::collections::{BTreeMap, HashSet, VecDeque};
 
@@ -102,12 +102,12 @@ fn directive_sort_order(d: &Directive) -> i32 {
   }
 }
 
-fn directive_sort_key(d: &Directive) -> (NaiveDate, i32, u32) {
+fn directive_sort_key(d: &Directive) -> (Date, i32, u32) {
   let date = directive_date_parsed(d);
   (date, directive_sort_order(d), directive_lineno(d))
 }
 
-fn directive_date_parsed(d: &Directive) -> NaiveDate {
+fn directive_date_parsed(d: &Directive) -> Date {
   match d {
     Directive::Open(x) => x.date,
     Directive::Close(x) => x.date,
@@ -122,7 +122,7 @@ fn directive_date_parsed(d: &Directive) -> NaiveDate {
     Directive::Document(x) => x.date,
     Directive::Custom(x) => x.date,
     // Non-entry directives shouldn't reach the sorted list, but keep a stable fallback.
-    _ => NaiveDate::default(),
+    _ => Date::default(),
   }
 }
 
@@ -796,7 +796,7 @@ impl Loader {
   }
 }
 
-fn earliest_changed_date(old: &[Directive], new: &[Directive]) -> Option<NaiveDate> {
+fn earliest_changed_date(old: &[Directive], new: &[Directive]) -> Option<Date> {
   let min_len = old.len().min(new.len());
   for idx in 0..min_len {
     if old[idx] != new[idx] {
@@ -818,7 +818,7 @@ fn earliest_changed_date(old: &[Directive], new: &[Directive]) -> Option<NaiveDa
   None
 }
 
-fn first_index_at_or_after_date(directives: &[Directive], date: NaiveDate) -> usize {
+fn first_index_at_or_after_date(directives: &[Directive], date: Date) -> usize {
   directives
     .iter()
     .position(|directive| directive_date_parsed(directive) >= date)

@@ -1,7 +1,7 @@
 #[path = "core_common.rs"]
 mod common;
 use beancount_core::{KeyValue, KeyValueValue, Note, PopMeta, PushMeta};
-use chrono::NaiveDate;
+use jiff::civil::date;
 use common::{lines, parse_as};
 
 #[test]
@@ -90,7 +90,7 @@ fn note_directive_with_metadata() {
   let expected = Note {
     meta: note.meta.clone(),
     span: note.span,
-    date: NaiveDate::from_ymd_opt(2010, 9, 1).unwrap(),
+    date: date(2010, 9, 1),
     account: "Assets:Cash".into(),
     note: "note text".into(),
     comment: None,

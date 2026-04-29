@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use chrono::NaiveDate;
+use jiff::civil::Date;
 use rust_decimal::Decimal;
 
 use crate::core::{
@@ -56,7 +56,7 @@ impl InferenceError {
 pub struct InferredTransaction {
   pub meta: ast::Meta,
   pub span: ast::Span,
-  pub date: NaiveDate,
+  pub date: Date,
   pub txn: Option<String>,
   pub payee: Option<String>,
   pub narration: Option<String>,
@@ -533,7 +533,7 @@ mod tests {
   }
 
   fn txn_with_postings(postings: Vec<Posting>) -> Directive {
-    let date = NaiveDate::from_ymd_opt(2024, 1, 1).unwrap();
+    let date = jiff::civil::date(2024, 1, 1);
     Directive::Transaction(Transaction {
       meta: meta(),
       span: span(),

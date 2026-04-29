@@ -6,9 +6,9 @@ use beancount_core as core;
 use beancount_parser::ParseError;
 use beancount_parser::ast;
 use beancount_parser::parse_lossy;
-use chrono::{Datelike, NaiveDate};
 use core::Directive;
 use core::normalize_directives;
+use jiff::civil::Date;
 use pyo3::IntoPyObject;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
@@ -1112,7 +1112,7 @@ fn convert_open(py: Python<'_>, open: &core::Open) -> PyResult<Py<PyAny>> {
     .call1(py, (meta, date, open.account.as_str(), currencies, booking))
 }
 
-fn parse_naive_date_fast(date: &str) -> PyResult<NaiveDate> {
+fn parse_naive_date_fast<'py>(py: Python<'py>, date: &str) -> PyResult<Bound<'py, PyDate>> {
   let trimmed = date.trim();
   if trimmed.len() != 10
     || trimmed.as_bytes()[4] != b'-'
@@ -1126,18 +1126,28 @@ fn parse_naive_date_fast(date: &str) -> PyResult<NaiveDate> {
     return Err(PyValueError::new_err(format!("invalid date `{}`", date)));
   }
 
-  let year: i32 = trimmed[0..4]
+  let year: i16 = trimmed[0..4]
     .parse()
     .map_err(|err| PyValueError::new_err(format!("invalid year `{}`: {}", date, err)))?;
-  let month: u32 = trimmed[5..7]
+
+  let month: i8 = trimmed[5..7]
     .parse()
     .map_err(|err| PyValueError::new_err(format!("invalid month `{}`: {}", date, err)))?;
-  let day: u32 = trimmed[8..10]
+
+  let day: i8 = trimmed[8..10]
     .parse()
     .map_err(|err| PyValueError::new_err(format!("invalid day `{}`: {}", date, err)))?;
 
-  NaiveDate::from_ymd_opt(year, month, day)
-    .ok_or_else(|| PyValueError::new_err(format!("invalid date `{}`", date)))
+  let jiff_date = jiff::civil::date(year, month, day);
+
+  let py_date = PyDate::new(
+    py,
+    jiff_date.year() as i32,
+    jiff_date.month() as u8,
+    jiff_date.day() as u8,
+  )?;
+
+  Ok(py_date)
 }
 
 fn convert_close(py: Python<'_>, close: &core::Close) -> PyResult<Py<PyAny>> {
@@ -1542,9 +1552,10 @@ fn convert_custom_value(
       (py_value, dtype)
     }
     core::CustomValue::Date(date) => {
-      let py_value = PyDate::new(py, date.year(), date.month() as u8, date.day() as u8)?
-        .unbind()
-        .into();
+      let py_value =
+        PyDate::new(py, date.year() as i32, date.month() as u8, date.day() as u8)?
+          .unbind()
+          .into();
       let dtype = cache.date_type.clone_ref(py);
       (py_value, dtype)
     }
@@ -1665,9 +1676,9 @@ fn py_date(py: Python<'_>, date: &str) -> PyResult<Py<PyAny>> {
   Ok(pydate)
 }
 
-fn py_date_from_naive(py: Python<'_>, date: &NaiveDate) -> PyResult<Py<PyAny>> {
+fn py_date_from_naive(py: Python<'_>, date: &Date) -> PyResult<Py<PyAny>> {
   let pydate: Py<PyAny> =
-    PyDate::new(py, date.year(), date.month() as u8, date.day() as u8)?
+    PyDate::new(py, date.year() as i32, date.month() as u8, date.day() as u8)?
       .unbind()
       .into();
   Ok(pydate)
