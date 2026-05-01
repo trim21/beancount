@@ -29,6 +29,10 @@ class TestRustPushPopTags(unittest.TestCase):
         )
         self.assertTrue(errors)
         self.assertRegex(errors[0].message, "Unbalanced pushed tag")
+        self.assertEqual(2, errors[0].line)
+        self.assertEqual(1, errors[0].column)
+        self.assertIsNotNone(errors[0].span_start)
+        self.assertIsNotNone(errors[0].span_end)
         self.assertEqual(1, len(entries))
         self.assertIn("trip", entries[0].tags)
 
@@ -50,6 +54,30 @@ class TestRustPushPopTags(unittest.TestCase):
         first, second = entries
         self.assertIn("project", first.tags)
         self.assertNotIn("project", second.tags)
+
+    def test_duplicate_pushtag_keeps_outer_tag_active(self):
+        entries, errors, _ = self.parse(
+            """
+            pushtag #project
+            pushtag #project
+            2014-01-01 * "One"
+              Assets:Cash -1 USD
+              Expenses:Food 1 USD
+            poptag #project
+            2014-01-02 * "Two"
+              Assets:Cash -1 USD
+              Expenses:Food 1 USD
+            poptag #project
+            2014-01-03 * "Three"
+              Assets:Cash -1 USD
+              Expenses:Food 1 USD
+            """
+        )
+        self.assertFalse(errors)
+        self.assertEqual(3, len(entries))
+        self.assertIn("project", entries[0].tags)
+        self.assertIn("project", entries[1].tags)
+        self.assertNotIn("project", entries[2].tags)
 
 
 if __name__ == "__main__":

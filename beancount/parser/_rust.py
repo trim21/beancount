@@ -14,6 +14,9 @@ def build_options_map(filename: str):
 
 
 __version__: str = _parser_rust.__version__
+ParserError = _parser_rust.ParserError
+ParserSpan = _parser_rust.ParserSpan
+ParserLabelSpan = _parser_rust.ParserLabelSpan
 load_file = _parser_rust.load_file
 parse_string = _parser_rust.parse_string
 load_file_and_book = _parser_rust.load_file_and_book
@@ -22,6 +25,9 @@ check_file_rust = _parser_rust.check_file_rust
 
 __all__ = [
     "__version__",
+    "ParserError",
+    "ParserSpan",
+    "ParserLabelSpan",
     "build_options_map",
     "check_file_rust",
     "load_file",
