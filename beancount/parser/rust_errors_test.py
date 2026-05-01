@@ -11,7 +11,7 @@ class TestRustParserErrors(unittest.TestCase):
     def test_syntax_error_carries_precise_location(self):
         _, errors, _ = self.parse(
             """
-            2014-01-01 open
+            not-a-directive
             """
         )
 
@@ -25,7 +25,7 @@ class TestRustParserErrors(unittest.TestCase):
         self.assertIsNotNone(errors[0].span_end)
         self.assertIsNotNone(errors[0].span)
         self.assertEqual(2, errors[0].span.line)
-        self.assertIn("2014-01-01 open", errors[0].span.excerpt)
+        self.assertIn("not-a-directive", errors[0].span.excerpt)
         self.assertEqual([], errors[0].contexts)
         self.assertEqual([], errors[0].related)
         self.assertNotIn("Unrecognized directive", errors[0].message)
