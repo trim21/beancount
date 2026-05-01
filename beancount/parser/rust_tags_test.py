@@ -31,8 +31,13 @@ class TestRustPushPopTags(unittest.TestCase):
         self.assertRegex(errors[0].message, "Unbalanced pushed tag")
         self.assertEqual(2, errors[0].line)
         self.assertEqual(1, errors[0].column)
+        self.assertEqual("state", errors[0].kind)
+        self.assertEqual("unbalanced pushed tag", errors[0].reason)
+        self.assertEqual("<string>", errors[0].source_id)
         self.assertIsNotNone(errors[0].span_start)
         self.assertIsNotNone(errors[0].span_end)
+        self.assertIsNotNone(errors[0].span)
+        self.assertIn("pushtag #trip", errors[0].span.excerpt)
         self.assertEqual(1, len(entries))
         self.assertIn("trip", entries[0].tags)
 

@@ -141,7 +141,6 @@ pub fn load_string_and_book(
 ) -> PyResult<(Py<PyAny>, Py<PyAny>, Py<PyAny>)> {
   load_recursive_and_book(py, filename, None, Some(content))
 }
-
 /// Parser error exposed to Python. Matches beancount.core.data.BeancountError protocol.
 #[pyclass(module = "beancount.parser.parser", name = "ParserError", get_all)]
 struct PyParserError {
@@ -688,7 +687,14 @@ fn load_recursive_and_book(
   // Convert per-unit parse errors with correct filenames.
   for unit in &units {
     for err in &unit.errors {
-      all_errors.push(build_parser_error(py, err.clone(), unit.filename.as_str())?);
+      all_errors.push(build_parser_error(
+        py,
+        err.clone(),
+        unit.filename.as_str(),
+        "",
+        "semantic",
+        "directive normalization error",
+      )?);
     }
   }
   for err in &load_errors {
@@ -944,19 +950,22 @@ fn default_options_map(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
 fn build_parser_error_from_meta(
   py: Python<'_>,
   meta: &ast::Meta,
+  content: &str,
   span: Option<ast::Span>,
+  kind: &str,
+  reason: &str,
   message: String,
 ) -> PyResult<Py<PyAny>> {
   build_python_parser_error(
     py,
     meta.filename.as_ref(),
     meta.filename.as_ref(),
-    "",
+    content,
     meta.line,
     meta.column,
     span,
-    "semantic",
-    "parser error",
+    kind,
+    reason,
     message,
     Vec::new(),
     Vec::new(),
@@ -1026,8 +1035,8 @@ fn apply_options(
               content,
               Some(opt.span),
               "option",
-              "option conversion error",
-              format!("{message}"),
+              "invalid option value",
+              message,
             )?);
             continue;
           }
@@ -1111,17 +1120,20 @@ fn build_parser_error(
   py: Python<'_>,
   err: ParseError,
   filename: &str,
+  content: &str,
+  kind: &str,
+  reason: &str,
 ) -> PyResult<Py<PyAny>> {
   build_python_parser_error(
     py,
     filename,
     filename,
-    "",
+    content,
     err.line,
     err.column,
     None,
-    "semantic",
-    "parser error",
+    kind,
+    reason,
     err.message,
     Vec::new(),
     Vec::new(),
@@ -2011,7 +2023,14 @@ fn parse_source(
       options_map.set_item("include", PyList::empty(py))?;
       let _ = apply_options(py, &options_map, content, &[])?;
       apply_display_context_options(py, &options_map)?;
-      syntax_errors.push(build_parser_error(py, err, filename)?);
+      syntax_errors.push(build_parser_error(
+        py,
+        err,
+        filename,
+        content,
+        "semantic",
+        "directive normalization error",
+      )?);
       let errors = PyList::new(py, syntax_errors)?.unbind().into();
       let entries: Py<PyAny> = PyList::empty(py).unbind().into();
       return Ok((entries, errors, options_map.unbind().into()));
