@@ -1,6 +1,9 @@
 use chumsky::prelude::*;
+use ropey::Rope;
 
 use crate::Error;
+use crate::ParseDiagnostic;
+use crate::ParseDiagnosticKind;
 use crate::ast;
 use ariadne::{Label, Report, ReportKind, Source};
 
@@ -148,4 +151,31 @@ pub fn render_strict_error(
     .finish()
     .write((source_id, Source::from(source)), &mut out);
   String::from_utf8_lossy(&out).into_owned()
+}
+
+pub fn parse_diagnostics(source: &str) -> Vec<ParseDiagnostic> {
+  let rope = Rope::from_str(source);
+
+  declarations_parser_strict()
+    .then_ignore(end())
+    .parse(source)
+    .into_errors()
+    .into_iter()
+    .map(|error| {
+      let span = error.span();
+      let position = crate::position_from_rope(&rope, span.start);
+
+      ParseDiagnostic {
+        kind: ParseDiagnosticKind::Syntax,
+        line: position.line,
+        column: position.column,
+        span: ast::Span::from_range(span.start, span.end),
+        message: format!("{error}"),
+        reason: "syntax error".to_string(),
+        contexts: Vec::new(),
+        related: Vec::new(),
+        annotation: None,
+      }
+    })
+    .collect()
 }

@@ -3,8 +3,10 @@
 #![deny(clippy::unwrap_used, clippy::expect_used)]
 
 use beancount_core as core;
+use beancount_parser::ParseDiagnostic;
 use beancount_parser::ParseError;
 use beancount_parser::ast;
+use beancount_parser::parse_diagnostics;
 use beancount_parser::parse_lossy;
 use core::Directive;
 use core::normalize_directives;
@@ -16,6 +18,7 @@ use pyo3::sync::PyOnceLock;
 use pyo3::types::{PyDate, PyDict, PyFrozenSet, PyList, PyModule, PyString, PyTuple};
 use rust_decimal::Decimal;
 use std::collections::{BTreeMap, HashMap};
+use std::ops::Range;
 use std::str::FromStr;
 
 mod data;
@@ -32,8 +35,50 @@ fn _parser_rust(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
   m.add_function(wrap_pyfunction!(load_file_and_book, m)?)?;
   m.add_function(wrap_pyfunction!(load_string_and_book, m)?)?;
   m.add_function(wrap_pyfunction!(check_file_rust, m)?)?;
+  m.add_class::<PyParserSpan>()?;
+  m.add_class::<PyParserLabelSpan>()?;
   m.add_class::<PyParserError>()?;
   Ok(())
+}
+
+#[pyclass(module = "beancount.parser.parser", name = "ParserSpan", get_all)]
+struct PyParserSpan {
+  pub source_id: String,
+  pub filename: String,
+  pub start: usize,
+  pub end: usize,
+  pub line: usize,
+  pub column: usize,
+  pub start_line: usize,
+  pub end_line: usize,
+  pub excerpt: String,
+}
+
+#[pymethods]
+impl PyParserSpan {
+  fn __repr__(&self) -> String {
+    format!(
+      "ParserSpan(source_id={:?}, start={}, end={}, line={}, column={})",
+      self.source_id, self.start, self.end, self.line, self.column
+    )
+  }
+}
+
+#[pyclass(module = "beancount.parser.parser", name = "ParserLabelSpan", get_all)]
+struct PyParserLabelSpan {
+  pub label: String,
+  pub span: Py<PyAny>,
+}
+
+#[pymethods]
+impl PyParserLabelSpan {
+  fn __repr__(&self, py: Python<'_>) -> PyResult<String> {
+    let span_repr = self.span.bind(py).repr()?.extract::<String>()?;
+    Ok(format!(
+      "ParserLabelSpan(label={:?}, span={})",
+      self.label, span_repr
+    ))
+  }
 }
 
 /// Rust-only recursive load + booking that avoids converting directives into Python.
@@ -103,16 +148,73 @@ struct PyParserError {
   pub source: Py<PyAny>,
   pub message: String,
   pub entry: Option<Py<PyAny>>,
+  pub filename: String,
+  pub line: usize,
+  pub column: usize,
+  pub span_start: Option<usize>,
+  pub span_end: Option<usize>,
+  pub source_id: String,
+  pub kind: String,
+  pub reason: String,
+  pub span: Option<Py<PyAny>>,
+  pub contexts: Vec<Py<PyAny>>,
+  pub related: Vec<Py<PyAny>>,
+  pub annotation: Option<String>,
 }
 
 #[pymethods]
 impl PyParserError {
   #[new]
-  fn new(source: Py<PyAny>, message: String, entry: Option<Py<PyAny>>) -> Self {
+  #[pyo3(signature = (
+    source,
+    message,
+    entry = None,
+    filename = "<string>".to_string(),
+    line = 0,
+    column = 0,
+    span_start = None,
+    span_end = None,
+    source_id = "<string>".to_string(),
+    kind = "semantic".to_string(),
+    reason = String::new(),
+    span = None,
+    contexts = Vec::new(),
+    related = Vec::new(),
+    annotation = None,
+  ))]
+  fn new(
+    source: Py<PyAny>,
+    message: String,
+    entry: Option<Py<PyAny>>,
+    filename: String,
+    line: usize,
+    column: usize,
+    span_start: Option<usize>,
+    span_end: Option<usize>,
+    source_id: String,
+    kind: String,
+    reason: String,
+    span: Option<Py<PyAny>>,
+    contexts: Vec<Py<PyAny>>,
+    related: Vec<Py<PyAny>>,
+    annotation: Option<String>,
+  ) -> Self {
     Self {
       source,
       message,
       entry,
+      filename,
+      line,
+      column,
+      span_start,
+      span_end,
+      source_id,
+      kind,
+      reason,
+      span,
+      contexts,
+      related,
+      annotation,
     }
   }
 
@@ -128,10 +230,199 @@ impl PyParserError {
     };
 
     Ok(format!(
-      "ParserError(source={}, message={:?}, entry={})",
-      source_repr, self.message, entry_repr
+      "ParserError(source={}, message={:?}, entry={}, kind={:?}, line={}, column={}, span=({}, {}))",
+      source_repr,
+      self.message,
+      entry_repr,
+      self.kind,
+      self.line,
+      self.column,
+      self
+        .span_start
+        .map_or_else(|| "None".to_string(), |value| value.to_string()),
+      self
+        .span_end
+        .map_or_else(|| "None".to_string(), |value| value.to_string()),
     ))
   }
+}
+
+fn clamp_span_range(content: &str, span: ast::Span) -> Range<usize> {
+  let start = span.start.min(content.len());
+  let end = span.end.min(content.len()).max(start);
+  start..end
+}
+
+fn line_number_at(content: &str, byte_offset: usize) -> usize {
+  content[..byte_offset]
+    .bytes()
+    .filter(|b| *b == b'\n')
+    .count()
+    + 1
+}
+
+fn line_start_at(content: &str, byte_offset: usize) -> usize {
+  content[..byte_offset]
+    .rfind('\n')
+    .map_or(0, |idx| idx.saturating_add(1))
+}
+
+fn line_end_at(content: &str, byte_offset: usize) -> usize {
+  content[byte_offset..]
+    .find('\n')
+    .map_or(content.len(), |idx| byte_offset + idx)
+}
+
+fn span_from_line_column(content: &str, line: usize, column: usize) -> Option<ast::Span> {
+  if line == 0 || column == 0 {
+    return None;
+  }
+
+  let mut current_line = 1usize;
+  let mut line_start = 0usize;
+  for segment in content.split_inclusive('\n') {
+    if current_line == line {
+      let line_content = segment.strip_suffix('\n').unwrap_or(segment);
+      let column_offset = column.saturating_sub(1).min(line_content.len());
+      let start = line_start + column_offset;
+      return Some(ast::Span::from_range(start, start));
+    }
+    line_start += segment.len();
+    current_line += 1;
+  }
+
+  if current_line == line {
+    let column_offset = column
+      .saturating_sub(1)
+      .min(content.len().saturating_sub(line_start));
+    let start = line_start + column_offset;
+    return Some(ast::Span::from_range(start, start));
+  }
+
+  None
+}
+
+fn resolve_span_excerpt(content: &str, span: ast::Span) -> PyParserSpan {
+  let range = clamp_span_range(content, span);
+  let line = line_number_at(content, range.start);
+  let column = range
+    .start
+    .saturating_sub(line_start_at(content, range.start))
+    + 1;
+  let start_line = line_number_at(content, range.start);
+  let anchor = range.end.saturating_sub(1).max(range.start);
+  let end_line = line_number_at(content, anchor.min(content.len()));
+  let excerpt_start = line_start_at(content, range.start);
+  let excerpt_end = line_end_at(content, anchor.min(content.len()));
+  let excerpt = content[excerpt_start..excerpt_end].to_string();
+
+  PyParserSpan {
+    source_id: String::new(),
+    filename: String::new(),
+    start: range.start,
+    end: range.end,
+    line,
+    column,
+    start_line,
+    end_line,
+    excerpt,
+  }
+}
+
+fn make_python_span(
+  py: Python<'_>,
+  filename: &str,
+  source_id: &str,
+  content: &str,
+  span: ast::Span,
+) -> PyResult<Py<PyAny>> {
+  let mut resolved = resolve_span_excerpt(content, span);
+  resolved.filename = filename.to_string();
+  resolved.source_id = source_id.to_string();
+  Py::new(py, resolved).map(|value| value.into())
+}
+
+fn make_python_label_span(
+  py: Python<'_>,
+  filename: &str,
+  source_id: &str,
+  content: &str,
+  label: &str,
+  span: ast::Span,
+) -> PyResult<Py<PyAny>> {
+  let span = make_python_span(py, filename, source_id, content, span)?;
+  Py::new(
+    py,
+    PyParserLabelSpan {
+      label: label.to_string(),
+      span,
+    },
+  )
+  .map(|value| value.into())
+}
+
+fn make_source_meta(
+  py: Python<'_>,
+  filename: &str,
+  line: usize,
+  column: usize,
+) -> PyResult<Py<PyAny>> {
+  let cache = cache(py)?;
+  let kv = PyDict::new(py);
+  kv.set_item("column", column)?;
+  cache.new_metadata.call1(py, (filename, line, kv))
+}
+
+fn build_python_parser_error(
+  py: Python<'_>,
+  filename: &str,
+  source_id: &str,
+  content: &str,
+  line: usize,
+  column: usize,
+  span: Option<ast::Span>,
+  kind: &str,
+  reason: &str,
+  message: String,
+  contexts: Vec<(String, ast::Span)>,
+  related: Vec<(String, ast::Span)>,
+  annotation: Option<String>,
+) -> PyResult<Py<PyAny>> {
+  let resolved_span = span.or_else(|| span_from_line_column(content, line, column));
+  let source = make_source_meta(py, filename, line, column)?;
+  let span_obj = resolved_span
+    .map(|value| make_python_span(py, filename, source_id, content, value))
+    .transpose()?;
+  let context_objs = contexts
+    .into_iter()
+    .map(|(label, ctx_span)| {
+      make_python_label_span(py, filename, source_id, content, &label, ctx_span)
+    })
+    .collect::<PyResult<Vec<_>>>()?;
+  let related_objs = related
+    .into_iter()
+    .map(|(label, rel_span)| {
+      make_python_label_span(py, filename, source_id, content, &label, rel_span)
+    })
+    .collect::<PyResult<Vec<_>>>()?;
+  let py_err = PyParserError {
+    source: source.clone_ref(py),
+    message,
+    entry: None,
+    filename: filename.to_string(),
+    line,
+    column,
+    span_start: resolved_span.map(|value| value.start),
+    span_end: resolved_span.map(|value| value.end),
+    source_id: source_id.to_string(),
+    kind: kind.to_string(),
+    reason: reason.to_string(),
+    span: span_obj,
+    contexts: context_objs,
+    related: related_objs,
+    annotation,
+  };
+  Py::new(py, py_err).map(|e| e.into())
 }
 
 /// Global cache for imported modules and classes so we don't look them up repeatedly.
@@ -466,7 +757,7 @@ fn load_recursive_and_book(
     }
   }
 
-  let (entries_vec, _tag_errors) = convert_directives(py, booked, top_filename, &dcontext)?;
+  let (entries_vec, _tag_errors) = convert_directives(py, booked, "", &dcontext, false)?;
   let entries = PyList::new(py, entries_vec)?.unbind().into();
   let errors: Py<PyAny> = PyList::new(py, all_errors)?.unbind().into();
   Ok((entries, errors, options_map))
@@ -534,7 +825,7 @@ fn build_options_map_for_unit(
   options_map.set_item("filename", &unit.filename)?;
   options_map.set_item("include", PyList::new(py, &unit.includes)?)?;
 
-  let errors: Vec<Py<PyAny>> = apply_options(py, &options_map, &unit.options)?;
+  let errors: Vec<Py<PyAny>> = apply_options(py, &options_map, "", &unit.options)?;
 
   if !unit.plugins.is_empty() {
     let plugin_list_obj = options_map
@@ -653,25 +944,56 @@ fn default_options_map(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
 fn build_parser_error_from_meta(
   py: Python<'_>,
   meta: &ast::Meta,
+  span: Option<ast::Span>,
   message: String,
 ) -> PyResult<Py<PyAny>> {
-  let cache = cache(py)?;
-  let kv = PyDict::new(py);
-  kv.set_item("column", meta.column)?;
-  let source = cache
-    .new_metadata
-    .call1(py, (meta.filename.as_ref(), meta.line, kv))?;
-  let py_err = PyParserError {
-    source: source.clone_ref(py),
+  build_python_parser_error(
+    py,
+    meta.filename.as_ref(),
+    meta.filename.as_ref(),
+    "",
+    meta.line,
+    meta.column,
+    span,
+    "semantic",
+    "parser error",
     message,
-    entry: None,
-  };
-  Py::new(py, py_err).map(|e| e.into())
+    Vec::new(),
+    Vec::new(),
+    None,
+  )
+}
+
+fn build_parser_error_from_meta_with_content(
+  py: Python<'_>,
+  meta: &ast::Meta,
+  content: &str,
+  span: Option<ast::Span>,
+  kind: &str,
+  reason: &str,
+  message: String,
+) -> PyResult<Py<PyAny>> {
+  build_python_parser_error(
+    py,
+    meta.filename.as_ref(),
+    meta.filename.as_ref(),
+    content,
+    meta.line,
+    meta.column,
+    span,
+    kind,
+    reason,
+    message,
+    Vec::new(),
+    Vec::new(),
+    None,
+  )
 }
 
 fn apply_options(
   py: Python<'_>,
   options_map: &Bound<'_, PyDict>,
+  content: &str,
   options: &[core::OptionDirective],
 ) -> PyResult<Vec<Py<PyAny>>> {
   let cache = cache(py)?;
@@ -698,7 +1020,15 @@ fn apply_options(
             let message = err.value(py).str()?;
             let message = message.to_string_lossy().into_owned();
             let message = format!("Error for option '{}': {}", key, message);
-            option_errors.push(build_parser_error_from_meta(py, &opt.meta, message)?);
+            option_errors.push(build_parser_error_from_meta_with_content(
+              py,
+              &opt.meta,
+              content,
+              Some(opt.span),
+              "option",
+              "option conversion error",
+              format!("{message}"),
+            )?);
             continue;
           }
         }
@@ -782,16 +1112,57 @@ fn build_parser_error(
   err: ParseError,
   filename: &str,
 ) -> PyResult<Py<PyAny>> {
-  let cache = cache(py)?;
-  let kv = PyDict::new(py);
-  kv.set_item("column", err.column)?;
-  let meta = cache.new_metadata.call1(py, (filename, err.line, kv))?;
-  let py_err = PyParserError {
-    source: meta.clone_ref(py),
-    message: err.message,
-    entry: None,
-  };
-  Py::new(py, py_err).map(|e| e.into())
+  build_python_parser_error(
+    py,
+    filename,
+    filename,
+    "",
+    err.line,
+    err.column,
+    None,
+    "semantic",
+    "parser error",
+    err.message,
+    Vec::new(),
+    Vec::new(),
+    None,
+  )
+}
+
+fn build_parser_diagnostic(
+  py: Python<'_>,
+  filename: &str,
+  content: &str,
+  diagnostic: ParseDiagnostic,
+) -> PyResult<Py<PyAny>> {
+  let kind = diagnostic.kind.as_str();
+  let reason = diagnostic.reason.clone();
+  let message = diagnostic.message.clone();
+  let contexts = diagnostic
+    .contexts
+    .into_iter()
+    .map(|item| (item.label, item.span))
+    .collect();
+  let related = diagnostic
+    .related
+    .into_iter()
+    .map(|item| (item.label, item.span))
+    .collect();
+  build_python_parser_error(
+    py,
+    filename,
+    filename,
+    content,
+    diagnostic.line,
+    diagnostic.column,
+    Some(diagnostic.span),
+    kind,
+    &reason,
+    message,
+    contexts,
+    related,
+    diagnostic.annotation,
+  )
 }
 
 fn partition_directives(
@@ -830,60 +1201,73 @@ type PyEntriesAndErrors = (Vec<Py<PyAny>>, Vec<Py<PyAny>>);
 fn convert_directives(
   py: Python<'_>,
   directives: Vec<Directive>,
-  filename: &str,
+  content: &str,
   dcontext: &Bound<'_, PyAny>,
+  suppress_raw_errors: bool,
 ) -> PyResult<PyEntriesAndErrors> {
   use std::collections::BTreeSet;
 
   let mut entries: Vec<Py<PyAny>> = Vec::new();
   let mut errors: Vec<Py<PyAny>> = Vec::new();
-  let mut active_tags: BTreeSet<String> = BTreeSet::new();
-  let mut active_meta: BTreeMap<String, Vec<core::KeyValue>> = BTreeMap::new();
+  let mut active_tags: BTreeMap<String, Vec<core::TagDirective>> = BTreeMap::new();
+  let mut active_meta: BTreeMap<String, Vec<core::PushMeta>> = BTreeMap::new();
 
   for directive in directives {
     match directive {
       Directive::PushMeta(pm) => {
-        let kv = core::KeyValue {
-          span: pm.span,
-          key: pm.key.clone(),
-          value: pm.value.clone(),
-        };
-        active_meta.entry(pm.key).or_default().push(kv);
+        active_meta.entry(pm.key.clone()).or_default().push(pm);
       }
       Directive::PopMeta(pm) => match active_meta.get_mut(&pm.key) {
         Some(stack) => {
           if stack.pop().is_none() {
-            let err = ParseError {
-              line: pm.meta.line,
-              column: pm.meta.column,
-              message: format!("Attempting to pop absent metadata key: '{}'", pm.key),
-            };
-            errors.push(build_parser_error(py, err, filename)?);
+            errors.push(build_parser_error_from_meta_with_content(
+              py,
+              &pm.meta,
+              content,
+              Some(pm.span),
+              "state",
+              "parser state error",
+              format!("Attempting to pop absent metadata key: '{}'", pm.key),
+            )?);
           }
           if stack.is_empty() {
             active_meta.remove(&pm.key);
           }
         }
         None => {
-          let err = ParseError {
-            line: pm.meta.line,
-            column: pm.meta.column,
-            message: format!("Attempting to pop absent metadata key: '{}'", pm.key),
-          };
-          errors.push(build_parser_error(py, err, filename)?);
+          errors.push(build_parser_error_from_meta_with_content(
+            py,
+            &pm.meta,
+            content,
+            Some(pm.span),
+            "state",
+            "parser state error",
+            format!("Attempting to pop absent metadata key: '{}'", pm.key),
+          )?);
         }
       },
       Directive::PushTag(tag) => {
-        active_tags.insert(tag.tag.clone());
+        active_tags.entry(tag.tag.clone()).or_default().push(tag);
       }
       Directive::PopTag(tag) => {
-        if !active_tags.remove(&tag.tag) {
-          let err = ParseError {
-            line: tag.meta.line,
-            column: tag.meta.column,
-            message: format!("Attempting to pop absent tag: '{}'", tag.tag),
-          };
-          errors.push(build_parser_error(py, err, filename)?);
+        let mut removed = false;
+        if let Some(stack) = active_tags.get_mut(&tag.tag) {
+          removed = stack.pop().is_some();
+          if stack.is_empty() {
+            active_tags.remove(&tag.tag);
+          }
+        }
+
+        if !removed {
+          errors.push(build_parser_error_from_meta_with_content(
+            py,
+            &tag.meta,
+            content,
+            Some(tag.span),
+            "state",
+            "parser state error",
+            format!("Attempting to pop absent tag: '{}'", tag.tag),
+          )?);
         }
       }
       Directive::Transaction(txn) => {
@@ -895,7 +1279,7 @@ fn convert_directives(
         } else {
           let mut tagged = txn;
           let mut tag_set: BTreeSet<String> = tagged.tags.iter().cloned().collect();
-          tag_set.extend(active_tags.iter().cloned());
+          tag_set.extend(active_tags.keys().cloned());
           tagged.tags = tag_set.into_iter().collect();
           entries.push(convert_transaction(py, &tagged, dcontext)?);
         }
@@ -909,7 +1293,7 @@ fn convert_directives(
         } else {
           let mut tagged = doc;
           let mut tag_set: BTreeSet<String> = tagged.tags.iter().cloned().collect();
-          tag_set.extend(active_tags.iter().cloned());
+          tag_set.extend(active_tags.keys().cloned());
           tagged.tags = tag_set.into_iter().collect();
           entries.push(convert_document(py, &tagged)?);
         }
@@ -918,12 +1302,17 @@ fn convert_directives(
         // Ignore comments in Python bindings.
       }
       Directive::Raw(raw) => {
-        let err = ParseError {
-          line: raw.meta.line,
-          column: raw.meta.column,
-          message: format!("Unrecognized directive: {}", raw.text),
-        };
-        errors.push(build_parser_error(py, err, filename)?);
+        if !suppress_raw_errors {
+          errors.push(build_parser_error_from_meta_with_content(
+            py,
+            &raw.meta,
+            content,
+            Some(raw.span),
+            "recovery",
+            "unrecognized directive after lossy recovery",
+            format!("Unrecognized directive: {}", raw.text),
+          )?);
+        }
       }
       mut other => {
         // Apply pushed metadata to directives that carry key-value metadata.
@@ -937,24 +1326,34 @@ fn convert_directives(
   }
 
   if !active_tags.is_empty() {
-    for tag in active_tags {
-      let err = ParseError {
-        line: 0,
-        column: 0,
-        message: format!("Unbalanced pushed tag: '{}'", tag),
-      };
-      errors.push(build_parser_error(py, err, filename)?);
+    for (tag, stack) in active_tags {
+      for pushed in stack {
+        errors.push(build_parser_error_from_meta_with_content(
+          py,
+          &pushed.meta,
+          content,
+          Some(pushed.span),
+          "state",
+          "unbalanced pushed tag",
+          format!("Unbalanced pushed tag: '{}'", tag),
+        )?);
+      }
     }
   }
 
   if !active_meta.is_empty() {
-    for key in active_meta.keys() {
-      let err = ParseError {
-        line: 0,
-        column: 0,
-        message: format!("Unbalanced metadata key: '{}'", key),
-      };
-      errors.push(build_parser_error(py, err, filename)?);
+    for (key, stack) in active_meta {
+      for pushed in stack {
+        errors.push(build_parser_error_from_meta_with_content(
+          py,
+          &pushed.meta,
+          content,
+          Some(pushed.span),
+          "state",
+          "unbalanced pushed metadata key",
+          format!("Unbalanced metadata key: '{}'", key),
+        )?);
+      }
     }
   }
 
@@ -963,7 +1362,7 @@ fn convert_directives(
 
 fn apply_meta_to_key_values(
   mut key_values: core::SmallKeyValues,
-  active_meta: &BTreeMap<String, Vec<core::KeyValue>>,
+  active_meta: &BTreeMap<String, Vec<core::PushMeta>>,
 ) -> core::SmallKeyValues {
   use std::collections::BTreeSet;
 
@@ -973,8 +1372,12 @@ fn apply_meta_to_key_values(
     if present.contains(key) {
       continue;
     }
-    if let Some(kv) = stack.last() {
-      key_values.push(kv.clone());
+    if let Some(pushed) = stack.last() {
+      key_values.push(core::KeyValue {
+        span: pushed.span,
+        key: pushed.key.clone(),
+        value: pushed.value.clone(),
+      });
     }
   }
 
@@ -983,7 +1386,7 @@ fn apply_meta_to_key_values(
 
 fn apply_meta_to_directive(
   directive: Directive,
-  active_meta: &BTreeMap<String, Vec<core::KeyValue>>,
+  active_meta: &BTreeMap<String, Vec<core::PushMeta>>,
 ) -> Directive {
   match directive {
     Directive::Open(mut open) => {
@@ -1596,17 +1999,20 @@ fn parse_source(
   let options_map = default_options_map(py)?;
   options_map.set_item("filename", filename)?;
 
+  let mut syntax_errors: Vec<Py<PyAny>> = parse_diagnostics(content)
+    .into_iter()
+    .map(|diagnostic| build_parser_diagnostic(py, filename, content, diagnostic))
+    .collect::<PyResult<_>>()?;
   let directives = parse_lossy(content);
 
   let normalized = match normalize_directives(&directives, filename, content) {
     Ok(normalized) => normalized,
     Err(err) => {
       options_map.set_item("include", PyList::empty(py))?;
-      let _ = apply_options(py, &options_map, &[])?;
+      let _ = apply_options(py, &options_map, content, &[])?;
       apply_display_context_options(py, &options_map)?;
-      let errors = PyList::new(py, [build_parser_error(py, err, filename)?])?
-        .unbind()
-        .into();
+      syntax_errors.push(build_parser_error(py, err, filename)?);
+      let errors = PyList::new(py, syntax_errors)?.unbind().into();
       let entries: Py<PyAny> = PyList::empty(py).unbind().into();
       return Ok((entries, errors, options_map.unbind().into()));
     }
@@ -1614,7 +2020,7 @@ fn parse_source(
 
   let (includes, filtered, options, plugins) = partition_directives(normalized);
   options_map.set_item("include", PyList::new(py, &includes)?)?;
-  let option_errors = apply_options(py, &options_map, &options)?;
+  let option_errors = apply_options(py, &options_map, content, &options)?;
 
   if !plugins.is_empty() {
     let plugin_list_obj = options_map
@@ -1638,9 +2044,12 @@ fn parse_source(
   let dcontext = options_map
     .get_item("dcontext")?
     .ok_or_else(|| PyValueError::new_err("dcontext option missing from defaults"))?;
-  let (entries_vec, tag_errors) = convert_directives(py, filtered, filename, &dcontext)?;
+  let suppress_raw_errors = !syntax_errors.is_empty();
+  let (entries_vec, tag_errors) =
+    convert_directives(py, filtered, content, &dcontext, suppress_raw_errors)?;
   let entries = PyList::new(py, entries_vec)?.unbind().into();
-  let mut all_errors = option_errors;
+  let mut all_errors = syntax_errors;
+  all_errors.extend(option_errors);
   all_errors.extend(tag_errors);
   let errors: Py<PyAny> = PyList::new(py, all_errors)?.unbind().into();
   Ok((entries, errors, options_map.unbind().into()))

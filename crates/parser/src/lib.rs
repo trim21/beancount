@@ -8,7 +8,12 @@ pub mod ast;
 mod parser;
 mod utils;
 
-pub use parser::{parse_lossy, parse_strict, render_strict_error};
+pub use parser::{parse_diagnostics, parse_lossy, parse_strict, render_strict_error};
+
+#[deprecated(note = "use parse_lossy instead")]
+pub fn parse_str(input: &str) -> Vec<ast::Directive<'_>> {
+  parse_lossy(input)
+}
 
 use chumsky::error::Rich;
 use chumsky::prelude::*;
@@ -39,6 +44,46 @@ pub struct ParseError {
   pub message: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ParseDiagnosticKind {
+  Syntax,
+  Semantic,
+  State,
+  Option,
+  Recovery,
+}
+
+impl ParseDiagnosticKind {
+  pub const fn as_str(self) -> &'static str {
+    match self {
+      ParseDiagnosticKind::Syntax => "syntax",
+      ParseDiagnosticKind::Semantic => "semantic",
+      ParseDiagnosticKind::State => "state",
+      ParseDiagnosticKind::Option => "option",
+      ParseDiagnosticKind::Recovery => "recovery",
+    }
+  }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParseDiagnosticSpan {
+  pub label: String,
+  pub span: ast::Span,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParseDiagnostic {
+  pub kind: ParseDiagnosticKind,
+  pub line: usize,
+  pub column: usize,
+  pub span: ast::Span,
+  pub message: String,
+  pub reason: String,
+  pub contexts: Vec<ParseDiagnosticSpan>,
+  pub related: Vec<ParseDiagnosticSpan>,
+  pub annotation: Option<String>,
+}
+
 impl std::fmt::Display for ParseError {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     write!(f, "{}:{}: {}", self.line, self.column, self.message)
@@ -53,7 +98,7 @@ pub type Error<'src> = extra::Err<Rich<'src, char>>;
 
 #[cfg(test)]
 mod tests {
-  use super::{ast, parse_lossy};
+  use super::{ParseDiagnosticKind, ast, parse_diagnostics, parse_lossy};
 
   #[test]
   fn parses_crlf_input() {
@@ -97,5 +142,17 @@ mod tests {
     assert!(matches!(directives[5], ast::Directive::Raw(_)));
     assert!(matches!(directives[6], ast::Directive::Open(_)));
     assert_eq!(directives.len(), 7);
+  }
+
+  #[test]
+  fn parse_diagnostics_reports_structured_syntax_error() {
+    let src = "This is not valid\n";
+
+    let diagnostics = parse_diagnostics(src);
+
+    assert_eq!(1, diagnostics.len(), "{diagnostics:?}");
+    assert_eq!(ParseDiagnosticKind::Syntax, diagnostics[0].kind);
+    assert_eq!("syntax error", diagnostics[0].reason);
+    assert!(diagnostics[0].span.end >= diagnostics[0].span.start);
   }
 }
