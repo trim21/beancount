@@ -265,23 +265,15 @@ pub fn infer_transaction_postings(
 ) -> Result<InferredTransaction, InferenceError> {
   let mut currencies: HashMap<String, CurrencyState> = HashMap::new();
   let mut missing_without_amount: Vec<usize> = Vec::new();
+  let mut currencyless_with_amount: Vec<(usize, Decimal)> = Vec::new();
 
   for (idx, posting) in txn.postings.iter().enumerate() {
     match &posting.amount {
-      Some(amount) => {
-        let currency = amount.currency.clone().ok_or_else(|| {
-          InferenceError::new(
-            InferenceErrorKind::MissingCurrency,
-            &posting.meta,
-            posting.span,
-            "posting amount is missing a currency".to_string(),
-          )
-        })?;
-
-        match &amount.number {
+      Some(amount) => match &amount.currency {
+        Some(currency) => match &amount.number {
           NumberExpr::Missing => {
             currencies
-              .entry(currency)
+              .entry(currency.clone())
               .or_default()
               .missing_indices
               .push(idx);
@@ -298,12 +290,69 @@ pub fn infer_transaction_postings(
               )
             })?;
 
-            currencies.entry(currency).or_default().sum += value;
+            currencies.entry(currency.clone()).or_default().sum += value;
           }
-        }
-      }
+        },
+        None => match &amount.number {
+          NumberExpr::Missing => {
+            // Amount present but both number and currency missing:
+            // treat as fully missing posting.
+            missing_without_amount.push(idx);
+          }
+          _ => {
+            // Amount present with a number but no currency:
+            // currency will be inferred from other postings.
+            let value = number_expr_to_decimal(&amount.number).map_err(|err| {
+              InferenceError::new(
+                InferenceErrorKind::NumberEval {
+                  message: err.message.clone(),
+                },
+                &posting.meta,
+                posting.span,
+                err.message,
+              )
+            })?;
+            currencyless_with_amount.push((idx, value));
+          }
+        },
+      },
       None => {
         missing_without_amount.push(idx);
+      }
+    }
+  }
+
+  // Infer currency for postings that have amounts but no currency.
+  if !currencyless_with_amount.is_empty() {
+    let inferred_currency = match currencies.len() {
+      0 => {
+        return Err(InferenceError::new(
+          InferenceErrorKind::MissingCurrency,
+          &txn.postings[currencyless_with_amount[0].0].meta,
+          txn.postings[currencyless_with_amount[0].0].span,
+          "posting amount is missing a currency; no other currency found in transaction"
+            .to_string(),
+        ));
+      }
+      1 => currencies.keys().next().unwrap().clone(),
+      _ => {
+        return Err(InferenceError::new(
+          InferenceErrorKind::MissingCurrency,
+          &txn.postings[currencyless_with_amount[0].0].meta,
+          txn.postings[currencyless_with_amount[0].0].span,
+          "posting amount is missing a currency; multiple currencies in transaction"
+            .to_string(),
+        ));
+      }
+    };
+
+    let state = currencies.get_mut(&inferred_currency).unwrap();
+    for (idx, value) in &currencyless_with_amount {
+      state.sum += *value;
+      // Update the posting to carry the inferred currency for later resolution.
+      let target = &mut txn.postings[*idx];
+      if let Some(ref mut amount) = target.amount {
+        amount.currency = Some(inferred_currency.clone());
       }
     }
   }
@@ -760,6 +809,137 @@ mod tests {
     let (inferred, errors) = infer_directives(directives);
     assert_eq!(errors.len(), 1, "unbalanced transaction should be rejected");
 
+    assert!(matches!(
+      errors[0].kind,
+      InferenceErrorKind::Unbalanced { ref currency, .. } if currency == "CNY"
+    ));
+    assert!(matches!(inferred[0], InferredDirective::Other(_)));
+  }
+
+  #[test]
+  fn infers_currency_for_amounts_without_currency() {
+    // Postings with amounts but no currency should inherit the currency
+    // from other postings in the same transaction that do have a currency.
+    let source = r#"
+2022-01-01 * "Payee" "Narration"
+  Assets:Cash1 1
+  Assets:Cash2 2 CNY
+  Assets:Cash3 -3
+"#;
+
+    let parsed = beancount_parser::parse_strict(source).unwrap();
+    let directives = crate::core::normalize_directives(&parsed, "test.beancount", source)
+      .expect("normalize directives");
+
+    let (inferred, errors) = infer_directives(directives);
+    assert!(errors.is_empty(), "expected no errors, got: {:?}", errors);
+
+    let InferredDirective::Transaction(txn) = &inferred[0] else {
+      panic!("expected transaction");
+    };
+
+    assert_eq!(txn.postings.len(), 3);
+    // All postings should have CNY as currency
+    for posting in &txn.postings {
+      assert_eq!(posting.amount.currency, "CNY");
+    }
+    assert_eq!(txn.postings[0].amount.number, Decimal::new(1, 0));
+    assert_eq!(txn.postings[1].amount.number, Decimal::new(2, 0));
+    assert_eq!(txn.postings[2].amount.number, Decimal::new(-3, 0));
+  }
+
+  #[test]
+  fn infers_currency_with_auto_posting() {
+    // Currencyless posting + fully missing posting: currency should be
+    // inferred, and the missing posting auto-balanced.
+    let source = r#"
+2022-01-01 * "Payee" "Narration"
+  Assets:Cash1 10
+  Assets:Cash2
+  Assets:Cash3 2 CNY
+"#;
+
+    let parsed = beancount_parser::parse_strict(source).unwrap();
+    let directives = crate::core::normalize_directives(&parsed, "test.beancount", source)
+      .expect("normalize directives");
+
+    let (inferred, errors) = infer_directives(directives);
+    assert!(errors.is_empty(), "expected no errors, got: {:?}", errors);
+
+    let InferredDirective::Transaction(txn) = &inferred[0] else {
+      panic!("expected transaction");
+    };
+
+    assert_eq!(txn.postings.len(), 3);
+    assert_eq!(txn.postings[0].amount.currency, "CNY");
+    assert_eq!(txn.postings[0].amount.number, Decimal::new(10, 0));
+    assert_eq!(txn.postings[1].amount.currency, "CNY");
+    assert_eq!(txn.postings[1].amount.number, Decimal::new(-12, 0));
+    assert_eq!(txn.postings[2].amount.currency, "CNY");
+    assert_eq!(txn.postings[2].amount.number, Decimal::new(2, 0));
+  }
+
+  #[test]
+  fn fails_currencyless_when_no_explicit_currency() {
+    // All postings have amounts but none have a currency → error.
+    let source = r#"
+2022-01-01 * "Payee" "Narration"
+  Assets:Cash1 1
+  Assets:Cash2 -1
+"#;
+
+    let parsed = beancount_parser::parse_strict(source).unwrap();
+    let directives = crate::core::normalize_directives(&parsed, "test.beancount", source)
+      .expect("normalize directives");
+
+    let (inferred, errors) = infer_directives(directives);
+    assert_eq!(errors.len(), 1, "expected one inference error");
+    assert!(matches!(errors[0].kind, InferenceErrorKind::MissingCurrency));
+    assert!(errors[0]
+      .message
+      .contains("no other currency found in transaction"));
+    assert!(matches!(inferred[0], InferredDirective::Other(_)));
+  }
+
+  #[test]
+  fn fails_currencyless_when_multiple_explicit_currencies() {
+    // Posting without currency when multiple explicit currencies exist → ambiguous.
+    let source = r#"
+2022-01-01 * "Payee" "Narration"
+  Assets:Cash1 1
+  Assets:Cash2 2 USD
+  Assets:Cash3 3 CNY
+"#;
+
+    let parsed = beancount_parser::parse_strict(source).unwrap();
+    let directives = crate::core::normalize_directives(&parsed, "test.beancount", source)
+      .expect("normalize directives");
+
+    let (inferred, errors) = infer_directives(directives);
+    assert_eq!(errors.len(), 1, "expected one inference error");
+    assert!(matches!(errors[0].kind, InferenceErrorKind::MissingCurrency));
+    assert!(errors[0]
+      .message
+      .contains("multiple currencies in transaction"));
+    assert!(matches!(inferred[0], InferredDirective::Other(_)));
+  }
+
+  #[test]
+  fn fails_currencyless_when_unbalanced() {
+    // Currencyless postings that don't balance after inference → error.
+    let source = r#"
+2022-01-01 * "Payee" "Narration"
+  Assets:Cash1 1
+  Assets:Cash2 2 CNY
+  Assets:Cash3 -5
+"#;
+
+    let parsed = beancount_parser::parse_strict(source).unwrap();
+    let directives = crate::core::normalize_directives(&parsed, "test.beancount", source)
+      .expect("normalize directives");
+
+    let (inferred, errors) = infer_directives(directives);
+    assert_eq!(errors.len(), 1, "expected one inference error");
     assert!(matches!(
       errors[0].kind,
       InferenceErrorKind::Unbalanced { ref currency, .. } if currency == "CNY"

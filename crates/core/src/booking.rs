@@ -817,6 +817,7 @@ pub(crate) fn book_directives_with_state_and_checkpoints(
         // Infer exactly one missing posting amount by balancing weights.
         let mut missing_index: Option<usize> = None;
         let mut sums: BTreeMap<String, Decimal> = BTreeMap::new();
+        let mut currencyless_with_amount: Vec<(usize, Decimal)> = Vec::new();
         let mut any_explicit = false;
 
         for (idx, posting) in txn.postings.iter().enumerate() {
@@ -829,7 +830,7 @@ pub(crate) fn book_directives_with_state_and_checkpoints(
             continue;
           };
 
-          if matches!(amount.number, NumberExpr::Missing) || amount.currency.is_none() {
+          if matches!(amount.number, NumberExpr::Missing) {
             if missing_index.is_some() {
               missing_index = None;
               break;
@@ -841,9 +842,25 @@ pub(crate) fn book_directives_with_state_and_checkpoints(
           let Ok(units_number) = number_expr_to_decimal(&amount.number) else {
             continue;
           };
-          let Some(units_currency) = amount.currency.as_deref() else {
+
+          // Posting has a number but no currency: infer currency from other postings.
+          if amount.currency.is_none() {
+            if posting.cost.is_some() || posting.price_annotation.is_some() {
+              // Cost/price provides currency context; keep existing "missing" behavior
+              // until cost-basis inference is fully implemented.
+              if missing_index.is_some() {
+                missing_index = None;
+                break;
+              }
+              missing_index = Some(idx);
+              continue;
+            }
+            // No cost, no price: currency will be inferred from explicit postings.
+            currencyless_with_amount.push((idx, units_number));
             continue;
-          };
+          }
+
+          let units_currency = amount.currency.as_deref().unwrap();
 
           let (weight_number, weight_currency) = if let Some(cost) = posting.cost.as_ref() {
             let Ok(cost_number) = number_expr_to_decimal(&cost.number) else {
@@ -871,6 +888,25 @@ pub(crate) fn book_directives_with_state_and_checkpoints(
           *sums
             .entry(weight_currency.to_string())
             .or_insert(Decimal::ZERO) += weight_number;
+        }
+
+        // Infer currency for postings that have amounts but no currency.
+        if !currencyless_with_amount.is_empty() && sums.len() <= 1 {
+          // If there's exactly one currency in explicit postings, use it.
+          // If no explicit currency, sums is empty and we can't infer (error later).
+          if sums.len() == 1 {
+            let inferred_currency = sums.keys().next().unwrap().clone();
+            for (idx, units_number) in &currencyless_with_amount {
+              *sums.entry(inferred_currency.clone()).or_default() += units_number;
+              let posting = &mut txn.postings[*idx];
+              if let Some(ref mut amount) = posting.amount {
+                amount.currency = Some(inferred_currency.clone());
+              }
+            }
+            any_explicit = true;
+          }
+          // If sums.len() == 0 (no explicit postings) or > 1 (ambiguous),
+          // currencyless postings remain unresolved → error caught below.
         }
 
         if let Some(midx) = missing_index
