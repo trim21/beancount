@@ -13,13 +13,12 @@ fn open_field_index(name: &str) -> Option<usize> {
   OPEN_FIELD_NAMES.iter().position(|field| *field == name)
 }
 
-#[allow(deprecated)]
 #[allow(clippy::upper_case_acronyms)]
 #[pyclass(
   module = "beancount.core.data",
   name = "Booking",
   frozen,
-  skip_from_py_object
+  from_py_object
 )]
 #[derive(Debug, Clone, PartialEq)]
 pub enum Booking {
