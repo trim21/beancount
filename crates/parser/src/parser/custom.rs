@@ -61,17 +61,15 @@ fn custom_value_parser<'src>()
       ast::WithSpan::new(ast::Span::from_range(span.start, span.end), value)
     });
 
-  let bool_value = unquoted_value.clone().filter(|value| {
+  let bool_value = unquoted_value.filter(|value| {
     value.content.eq_ignore_ascii_case("true")
       || value.content.eq_ignore_ascii_case("false")
   });
 
   let date_value = unquoted_value
-    .clone()
     .filter(|value| looks_like_date(value.content));
 
   let currency_value = unquoted_value
-    .clone()
     .filter(|value| looks_like_currency(value.content));
 
   let amount_value = number_literal_parser()

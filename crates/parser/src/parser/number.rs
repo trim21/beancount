@@ -137,15 +137,15 @@ pub(super) fn number_expr_parser<'src>()
       )
       .boxed();
 
-    let sum = product
+    
+
+    product
       .clone()
       .foldl(
         op_add_sub_sp.then(product).repeated(),
         |left, (op, right)| build_binary(left, op, right),
       )
-      .boxed();
-
-    sum
+      .boxed()
   })
 }
 
