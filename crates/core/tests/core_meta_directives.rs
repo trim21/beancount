@@ -1,8 +1,8 @@
 #[path = "core_common.rs"]
 mod common;
 use beancount_core::{KeyValue, KeyValueValue, Note, PopMeta, PushMeta};
-use jiff::civil::date;
 use common::{lines, parse_as};
+use jiff::civil::date;
 
 #[test]
 fn pushmeta_directive() {

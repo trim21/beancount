@@ -1,8 +1,8 @@
 #[path = "core_common.rs"]
 mod common;
 use beancount_core::{Close, KeyValue, KeyValueValue, Open};
-use jiff::civil::date;
 use common::{lines, parse_as};
+use jiff::civil::date;
 use smallvec::smallvec;
 
 #[test]

@@ -39,10 +39,10 @@ pub(super) fn number_expr_parser<'src>()
       .boxed()
   };
 
-  let op_mul_div = choice((op('*', ast::BinaryOp::Mul), op('/', ast::BinaryOp::Div)))
-    .boxed();
-  let op_add_sub = choice((op('+', ast::BinaryOp::Add), op('-', ast::BinaryOp::Sub)))
-    .boxed();
+  let op_mul_div =
+    choice((op('*', ast::BinaryOp::Mul), op('/', ast::BinaryOp::Div))).boxed();
+  let op_add_sub =
+    choice((op('+', ast::BinaryOp::Add), op('-', ast::BinaryOp::Sub))).boxed();
 
   let op_mul_div_sp = ws0
     .clone()
@@ -102,10 +102,7 @@ pub(super) fn number_expr_parser<'src>()
     let lparen = just('(').then_ignore(ws0.clone()).boxed();
     let rparen = ws0.clone().ignore_then(just(')')).boxed();
 
-    let paren = lparen
-      .ignore_then(expr.clone())
-      .then_ignore(rparen)
-      .boxed();
+    let paren = lparen.ignore_then(expr.clone()).then_ignore(rparen).boxed();
 
     let primary = choice((literal.clone(), paren)).boxed();
 
@@ -125,7 +122,11 @@ pub(super) fn number_expr_parser<'src>()
 
     let unary = primary
       .clone()
-      .or(prefix_op.then(primary.clone()).map(|(ops, value)| apply_prefix(ops, value)))
+      .or(
+        prefix_op
+          .then(primary.clone())
+          .map(|(ops, value)| apply_prefix(ops, value)),
+      )
       .boxed();
 
     let product = unary
@@ -308,7 +309,9 @@ mod tests {
       .unwrap();
 
     let (mul_op, mul_left, mul_right) = match expr {
-      ast::NumberExpr::Binary { op, left, right, .. } => (op, left, right),
+      ast::NumberExpr::Binary {
+        op, left, right, ..
+      } => (op, left, right),
       other => panic!("expected multiply expression, got {other:?}"),
     };
     assert_eq!(mul_op.content, ast::BinaryOp::Mul);
@@ -320,7 +323,9 @@ mod tests {
     assert_eq!(left_literal.content, "1");
 
     let (add_op, add_left, add_right) = match *mul_right {
-      ast::NumberExpr::Binary { op, left, right, .. } => (op, left, right),
+      ast::NumberExpr::Binary {
+        op, left, right, ..
+      } => (op, left, right),
       other => panic!("expected addition inside parens, got {other:?}"),
     };
     assert_eq!(add_op.content, ast::BinaryOp::Add);
@@ -349,7 +354,9 @@ mod tests {
       .unwrap();
 
     let (top_op, top_left, top_right) = match expr {
-      ast::NumberExpr::Binary { op, left, right, .. } => (op, left, right),
+      ast::NumberExpr::Binary {
+        op, left, right, ..
+      } => (op, left, right),
       other => panic!("expected top-level binary, got {other:?}"),
     };
 
@@ -362,7 +369,9 @@ mod tests {
     assert_eq!(zero.content, "0");
 
     let (inner_op, inner_left, inner_right) = match *top_right {
-      ast::NumberExpr::Binary { op, left, right, .. } => (op, left, right),
+      ast::NumberExpr::Binary {
+        op, left, right, ..
+      } => (op, left, right),
       other => panic!("expected inner subtraction, got {other:?}"),
     };
     assert_eq!(inner_op.content, ast::BinaryOp::Sub);

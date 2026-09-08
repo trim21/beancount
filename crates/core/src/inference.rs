@@ -894,10 +894,15 @@ mod tests {
 
     let (inferred, errors) = infer_directives(directives);
     assert_eq!(errors.len(), 1, "expected one inference error");
-    assert!(matches!(errors[0].kind, InferenceErrorKind::MissingCurrency));
-    assert!(errors[0]
-      .message
-      .contains("no other currency found in transaction"));
+    assert!(matches!(
+      errors[0].kind,
+      InferenceErrorKind::MissingCurrency
+    ));
+    assert!(
+      errors[0]
+        .message
+        .contains("no other currency found in transaction")
+    );
     assert!(matches!(inferred[0], InferredDirective::Other(_)));
   }
 
@@ -917,10 +922,15 @@ mod tests {
 
     let (inferred, errors) = infer_directives(directives);
     assert_eq!(errors.len(), 1, "expected one inference error");
-    assert!(matches!(errors[0].kind, InferenceErrorKind::MissingCurrency));
-    assert!(errors[0]
-      .message
-      .contains("multiple currencies in transaction"));
+    assert!(matches!(
+      errors[0].kind,
+      InferenceErrorKind::MissingCurrency
+    ));
+    assert!(
+      errors[0]
+        .message
+        .contains("multiple currencies in transaction")
+    );
     assert!(matches!(inferred[0], InferredDirective::Other(_)));
   }
 

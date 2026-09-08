@@ -18,7 +18,11 @@ fn parses_custom_with_inline_comment_after_values() {
 
   assert_eq!(custom.name.content, "\"fava-option\"");
   assert_eq!(
-    custom.values.iter().map(|value| value.raw.content).collect::<Vec<_>>(),
+    custom
+      .values
+      .iter()
+      .map(|value| value.raw.content)
+      .collect::<Vec<_>>(),
     vec!["\"collapse-pattern\"", "\"[^:]*:.*\""],
   );
   assert_eq!(
