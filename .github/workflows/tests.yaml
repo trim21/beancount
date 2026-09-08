@@ -9,7 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - uses: trim21/setup-rust@v0.0.1
 
       # cargo test has horrible output
       - name: Install cargo-nexte st
@@ -24,7 +24,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - uses: trim21/setup-rust@v0.0.1
+        with:
+          targets: wasm32-unknown-unknown
 
       - run: cargo check --target=wasm32-unknown-unknown -p beancount-core
 
@@ -49,7 +51,7 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
           allow-prereleases: true
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - uses: trim21/setup-rust@v0.0.1
       - uses: astral-sh/setup-uv@v7
         with:
           activate-environment: true
