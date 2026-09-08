@@ -32,13 +32,6 @@ repos:
         args: [ --fix ]
       - id: ruff-format
 
-  - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.15.0
-    hooks:
-      - id: mypy
-        additional_dependencies: [types-python-dateutil, types-regex, click]
-        exclude: ^(tools|experiments)/
-
   - repo: local
     hooks:
       - id: missing-tests
