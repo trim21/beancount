@@ -6,7 +6,6 @@ from typing import Tuple
 
 __version__: str
 
-
 class Booking:
     STRICT: ClassVar["Booking"]
     STRICT_WITH_SIZE: ClassVar["Booking"]
@@ -25,7 +24,6 @@ class Booking:
     def __hash__(self) -> int: ...
     def __str__(self) -> str: ...
 
-
 class ParserError:
     source: Any
     message: str
@@ -34,7 +32,6 @@ class ParserError:
     def __init__(self, source: Any, message: str, entry: Any = None) -> None: ...
     def __str__(self) -> str: ...
     def __repr__(self) -> str: ...
-
 
 def load_file(filename: str) -> Tuple[List[Any], List[Any], Dict[str, Any]]: ...
 def parse_string(
