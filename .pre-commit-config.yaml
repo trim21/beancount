@@ -40,15 +40,3 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
-      - id: filter-terms
-        name: filter-terms
-        entry: bash -c "grep -srn 'GOOGL?\b' beancount | grep -v GOOGLE_APIS || true"
-        language: system
-        pass_filenames: false
-        always_run: true
-      - id: multi-imports
-        name: multi-imports
-        entry: bash -c "(grep -srn '^(from.*)?import.*,' beancount | grep -v 'from typing') || true"
-        language: system
-        pass_filenames: false
-        always_run: true
