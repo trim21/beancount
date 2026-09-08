@@ -843,8 +843,8 @@ pub(crate) fn book_directives_with_state_and_checkpoints(
             continue;
           };
 
-          // Posting has a number but no currency: infer currency from other postings.
-          if amount.currency.is_none() {
+          let Some(units_currency) = amount.currency.as_deref() else {
+            // Posting has a number but no currency: infer currency from other postings.
             if posting.cost.is_some() || posting.price_annotation.is_some() {
               // Cost/price provides currency context; keep existing "missing" behavior
               // until cost-basis inference is fully implemented.
@@ -858,9 +858,7 @@ pub(crate) fn book_directives_with_state_and_checkpoints(
             // No cost, no price: currency will be inferred from explicit postings.
             currencyless_with_amount.push((idx, units_number));
             continue;
-          }
-
-          let units_currency = amount.currency.as_deref().unwrap();
+          };
 
           let (weight_number, weight_currency) = if let Some(cost) = posting.cost.as_ref() {
             let Ok(cost_number) = number_expr_to_decimal(&cost.number) else {
@@ -894,8 +892,9 @@ pub(crate) fn book_directives_with_state_and_checkpoints(
         if !currencyless_with_amount.is_empty() && sums.len() <= 1 {
           // If there's exactly one currency in explicit postings, use it.
           // If no explicit currency, sums is empty and we can't infer (error later).
-          if sums.len() == 1 {
-            let inferred_currency = sums.keys().next().unwrap().clone();
+          if sums.len() == 1
+            && let Some(inferred_currency) = sums.keys().next().cloned()
+          {
             for (idx, units_number) in &currencyless_with_amount {
               *sums.entry(inferred_currency.clone()).or_default() += units_number;
               let posting = &mut txn.postings[*idx];

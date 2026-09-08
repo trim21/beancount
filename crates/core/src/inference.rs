@@ -324,8 +324,8 @@ pub fn infer_transaction_postings(
 
   // Infer currency for postings that have amounts but no currency.
   if !currencyless_with_amount.is_empty() {
-    let inferred_currency = match currencies.len() {
-      0 => {
+    let inferred_currency = match (currencies.len(), currencies.keys().next()) {
+      (0, _) => {
         return Err(InferenceError::new(
           InferenceErrorKind::MissingCurrency,
           &txn.postings[currencyless_with_amount[0].0].meta,
@@ -334,7 +334,7 @@ pub fn infer_transaction_postings(
             .to_string(),
         ));
       }
-      1 => currencies.keys().next().unwrap().clone(),
+      (1, Some(currency)) => currency.clone(),
       _ => {
         return Err(InferenceError::new(
           InferenceErrorKind::MissingCurrency,
@@ -346,9 +346,8 @@ pub fn infer_transaction_postings(
       }
     };
 
-    let state = currencies.get_mut(&inferred_currency).unwrap();
     for (idx, value) in &currencyless_with_amount {
-      state.sum += *value;
+      currencies.entry(inferred_currency.clone()).or_default().sum += *value;
       // Update the posting to carry the inferred currency for later resolution.
       let target = &mut txn.postings[*idx];
       if let Some(ref mut amount) = target.amount {

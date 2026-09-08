@@ -15,7 +15,12 @@ fn open_field_index(name: &str) -> Option<usize> {
 
 #[allow(deprecated)]
 #[allow(clippy::upper_case_acronyms)]
-#[pyclass(module = "beancount.core.data", name = "Booking", frozen)]
+#[pyclass(
+  module = "beancount.core.data",
+  name = "Booking",
+  frozen,
+  skip_from_py_object
+)]
 #[derive(Debug, Clone, PartialEq)]
 pub enum Booking {
   STRICT,
